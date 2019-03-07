@@ -1,0 +1,85 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.0'
+      jupytext_version: 0.8.6
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+# %load_ext autoreload
+```
+
+```{python}
+# %autoreload 2
+```
+
+```{python}
+from proofs import *
+```
+
+```{python}
+filecoin_scaling_requirements.satisfied_by(bad_performance)
+```
+
+```{python}
+ec2_x1e32_xlarge.proving_time_per_constraint / porcuquine_prover.proving_time_per_constraint
+```
+
+```{python}
+z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
+```
+
+```{python}
+p = z.performance()
+```
+
+```{python}
+z.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements)
+```
+
+```{python}
+zz = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
+```
+
+```{python}
+pp = zz.performance()
+```
+
+```{python}
+zz.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements)
+```
+
+```{python}
+z.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements)
+```
+
+```{python}
+zz.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements)
+```
+
+```{python}
+p.total_seal_time
+```
+
+```{python}
+pp.total_seal_time
+```
+
+```{python}
+p.total_proof_size
+```
+
+```{python}
+pp.total_proof_size
+```
+
+```{python}
+
+```
