@@ -156,32 +156,35 @@ class ZigZag(object):
 
     def all_merkle_time(self): return self.merkle_time(self.layers + 1)
 
-    def total_replication_time(self):
+    # Per GiB
+    def replication_time(self, size):
         if self.instance:
-            return self.instance.replication_time_per_GiB() * (self.sector_size / GiB)
+            # Assumes replication time scales linearly with size.
+            return self.instance.replication_time_per_GiB() * (size / GiB)
         else:
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def vanilla_proving_time(self):
+    def vanilla_proving_time(self, size):
         if self.instance:
             return self.instance.vanilla_proving_time
         else:
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def groth_proving_time(self):
+    def groth_proving_time(self, size):
         if self.instance:
+            # FIXME: Calculate ratio of constraints for self.sector_size and size. Use to calculate groth proving time for size.
             return self.instance.groth_proving_time
         else:
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def total_proving_time(self):
-        return self.vanilla_proving_time() + self.groth_proving_time()
+    def total_proving_time(self, size):
+        return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
-    def performance(self):
-        seal_time = self.total_replication_time() + self.total_proving_time()
+    def performance(self, size=GiB):
+        seal_time =  (self.replication_time(size) + self.total_proving_time(size)) * (GiB / size)
         return Performance(seal_time, self.proof_size())
 
     def sector_size_required_to_justify_proof_size(self, required_performance):
@@ -193,6 +196,10 @@ class ZigZag(object):
     def sector_size_required_to_justify_seal_time(self, required_performance):
         # This works because total_proof_size is per 1GiB.
         return GiB* self.performance().total_seal_time / required_performance.total_seal_time
+
+    def justifies_seal_time(self, sector_size, required_performance):
+        return required_performance.satisfied_by(self.performance(size=sector_size))
+
 
 #    def seal_time_for_sector_size(self, sector_size):
 
@@ -222,6 +229,7 @@ class Config(object):
 # ###############################################################################
 
 z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
+zz = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge)
 
 m = Machine()
 c = Config(z, m)
