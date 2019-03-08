@@ -58,8 +58,23 @@ class HashFunction(object):
     def time(self):
         return self.hash_time
 
+    def div_time(self, other_hash):
+        return self.hash_time / other_hash.hash_time
+
+    def div_constraints(self, other_hash):
+        return self.constraints / other_hash.constraints
+
+def hybrid_hash(leaf_hash, root_hash, root_fraction):
+    leaf_fraction = 1 - root_fraction
+    hash_time = (root_hash.hash_time * root_fraction) + (leaf_hash.hash_time * leaf_fraction)
+    constraints = (root_hash.constraints * root_fraction) + (leaf_hash.constraints * leaf_fraction)
+    return HashFunction(hash_time, constraints)
+
 pedersen = HashFunction(0.000017993, 1324)
 blake2s = HashFunction(1.0428e-7, 10324)
+
+pb50 = hybrid_hash(pedersen, blake2s, 0.5)
+
 
 class MerkleTree(object):
     def __init__(self, nodes, hash_function):
@@ -75,6 +90,7 @@ class MerkleTree(object):
 class Instance(object):
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
     def __init__(self, **kwargs):
+        self.init_args = kwargs
         self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
         self.encoding_replication_time_per_GiB = kwargs.get('encoding_replication_time_per_GiB') # vcpu-seconds
         # Is reported vanilla proving time serial, or do we have to account for parallelism?
@@ -82,14 +98,25 @@ class Instance(object):
         self.constraints = kwargs.get('constraints')
         self.groth_proving_time = kwargs.get('groth_proving_time') # vcpu-seconds
         self.proving_time_per_constraint = self.groth_proving_time / self.constraints
+        self.merkle_tree_hash = kwargs.get('merkle_tree_hash', pedersen)
+        assert self.constraints, "constraints required"
 
     def merkle_tree_replication_time_per_GiB(self):
         # For now, assume merkle tree uses pedersen hashes.
-        return MerkleTree(GiB / 32, pedersen).time() * 11  # Grrr... hard-coding layers, needs to move to ZigZag in refactor.
+        return MerkleTree(GiB / 32, self.merkle_tree_hash).time() * 11  # Grrr... hard-coding layers, needs to move to ZigZag in refactor.
 
     def replication_time_per_GiB(self):
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
+    def scale(self, new_hash):
+        new_init_args = dict(self.init_args)
+        # FIXME: Scale encoding_replication_time_per_GiB
+        new_constraints = self.constraints * new_hash.constraints / self.merkle_tree_hash.constraints
+        new_init_args['constraints'] = new_constraints
+        new_init_args['groth_proving_time'] = self.proving_time_per_constraint * new_constraints
+        new_init_args['merkle_tree_hash'] = new_hash
+        return Instance(**new_init_args)
+        
 # ➜  rust-proofs git:(zigzag-example-taper) ✗ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 5 --size 262144 --groth
 # Feb 22 22:47:42.385 INFO replication_time/GiB: 2588.454166843s, target: stats, place: filecoin-proofs/examples/zigzag.rs:176 zigzag, root: filecoin-proofs
 # Feb 22 22:49:03.378 INFO vanilla_proving_time: 80.99321579 seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:208 zigzag, root: filecoin-proofs
@@ -116,6 +143,7 @@ class ZigZag(object):
     """ZigZag Model"""
 
     def __init__(self, **kwargs):
+        self.init_args = kwargs
         self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
         self.instance = kwargs.get('instance') # Optional Instance.
         self.circuit_proof_size = kwargs.get('circuit_proof_size', 192) # bytes
@@ -187,9 +215,10 @@ class ZigZag(object):
         seal_time =  (self.replication_time(size) + self.total_proving_time(size)) * (GiB / size)
         return Performance(seal_time, self.proof_size())
 
-    def sector_size_required_to_justify_proof_size(self, required_performance):
-        # This works because total_proof_size is per 1GiB.
-        return GiB * self.performance().total_proof_size / required_performance.total_proof_size
+    # This is not right. FIXME by using `justifies_seal_time` to search/solve.
+    # def sector_size_required_to_justify_proof_size(self, required_performance):
+    #     # This works because total_proof_size is per 1GiB.
+    #     return GiB * self.performance().total_proof_size / required_performance.total_proof_size
 
 
     # TODO: This doesn't yet account for the changes to seal time introduced by changing sector time.
@@ -199,6 +228,18 @@ class ZigZag(object):
 
     def justifies_seal_time(self, sector_size, required_performance):
         return required_performance.satisfied_by(self.performance(size=sector_size))
+
+    def scaled_for_new_hash(self, new_hash):
+        new_init_args = dict(self.init_args)
+        if self.instance:
+            scaled_instance = self.instance.scale(new_hash)
+            new_init_args['instance'] = scaled_instance
+            new_init_args['merkle_hash'] = new_hash
+            return ZigZag(**new_init_args)
+        else:
+            assert false, "unimplemented"
+
+
 
 
 #    def seal_time_for_sector_size(self, sector_size):
@@ -230,6 +271,7 @@ class Config(object):
 
 z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
 zz = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge)
+q = z.scaled_for_new_hash(blake2s)
 
 m = Machine()
 c = Config(z, m)

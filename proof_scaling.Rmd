@@ -83,3 +83,34 @@ humanize_bytes(p.total_proof_size)
 ```{python}
 humanize_bytes(pp.total_proof_size)
 ```
+
+```{python}
+porcuquine_blake = porcuquine.scaled_for_new_hash(blake2s)
+```
+
+```{python}
+porcuquine_blake.performance().total_seal_time
+```
+
+```{python}
+porcuquine.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+```
+
+```{python}
+x1e32.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+```
+
+```{python}
+porcuquine_blake.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+```
+
+*TODO*
+ - check all against a range of seal times;
+ - make graphs
+ - try with pedersen/blake hybrid, varying `root_height`
+ - search space for a combination of `root_height` and sector size which justifies seal time
+
+
+```{python}
+
+```
