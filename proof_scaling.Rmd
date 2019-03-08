@@ -21,6 +21,10 @@ jupyter:
 ```
 
 ```{python}
+from util import humanize_bytes
+```
+
+```{python}
 from proofs import *
 ```
 
@@ -33,35 +37,35 @@ ec2_x1e32_xlarge.proving_time_per_constraint / porcuquine_prover.proving_time_pe
 ```
 
 ```{python}
-z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
+porcuquine = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
 ```
 
 ```{python}
-p = z.performance()
+humanize_bytes(z.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements))
 ```
 
 ```{python}
-z.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements)
+x1e32 = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
 ```
 
 ```{python}
-zz = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
+humanize_bytes(x1e32.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements))
 ```
 
 ```{python}
-pp = zz.performance()
+humanize_bytes(porcuquine.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements))
 ```
 
 ```{python}
-zz.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements)
+humanize_bytes(x1e32.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements))
 ```
 
 ```{python}
-z.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements)
+p = porcuquine.performance()
 ```
 
 ```{python}
-zz.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements)
+pp = x1e32.performance()
 ```
 
 ```{python}
@@ -73,11 +77,23 @@ pp.total_seal_time
 ```
 
 ```{python}
-p.total_proof_size
+humanize_bytes(p.total_proof_size)
 ```
 
 ```{python}
-pp.total_proof_size
+humanize_bytes(pp.total_proof_size)
+```
+
+```{python}
+z.total_replication_time()
+```
+
+```{python}
+z.sector_size / GiB
+```
+
+```{python}
+z.instance.replication_time_per_GiB
 ```
 
 ```{python}
