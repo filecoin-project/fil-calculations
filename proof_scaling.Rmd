@@ -85,15 +85,15 @@ humanize_bytes(pp.total_proof_size)
 ```
 
 ```{python}
-z.total_replication_time()
+porcuquine_prover.replication_time_per_GiB()
 ```
 
 ```{python}
-z.sector_size / GiB
+porcuquine_prover.merkle_tree_replication_time_per_GiB()
 ```
 
 ```{python}
-z.instance.replication_time_per_GiB
+porcuquine_prover.encoding_replication_time_per_GiB
 ```
 
 ```{python}
