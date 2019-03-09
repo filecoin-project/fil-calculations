@@ -41,15 +41,7 @@ porcuquine = ZigZag(security=filecoin_security_requirements, instance=porcuquine
 ```
 
 ```{python}
-humanize_bytes(z.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements))
-```
-
-```{python}
 x1e32 = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
-```
-
-```{python}
-humanize_bytes(x1e32.sector_size_required_to_justify_proof_size(filecoin_scaling_requirements))
 ```
 
 ```{python}
@@ -110,6 +102,104 @@ porcuquine_blake.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
  - try with pedersen/blake hybrid, varying `root_height`
  - search space for a combination of `root_height` and sector size which justifies seal time
 
+
+```{python}
+porcuquine_pb50 = porcuquine.scaled_for_new_hash(pb50)
+```
+
+```{python}
+porcuquine_pb50.justifies_seal_time(GiB, filecoin_scaling_requirements)
+```
+
+```{python}
+porcuquine_pb50.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+```
+
+```{python}
+porcuquine_pb50.justifies_seal_time(2048 * GiB, filecoin_scaling_requirements)
+```
+
+```{python}
+porcuquine_pb50.performance().total_seal_time
+```
+
+```{python}
+porcuquine_pb50.performance(2048 * GiB).total_seal_time
+```
+
+```{python}
+porcuquine.performance(2048 * GiB).total_seal_time
+```
+
+```{python}
+porcuquine.performance().total_seal_time
+```
+
+```{python}
+filecoin_scaling_requirements.total_seal_time
+```
+
+```{python}
+filecoin_scaling_requirements.total_proof_size
+```
+
+```{python}
+porcuquine.performance().total_proof_size
+```
+
+```{python}
+x1e32.performance(64 * GiB).total_proof_size
+```
+
+```{python}
+x1e32.performance(66 * GiB).total_proof_size
+```
+
+```{python}
+x1e32.performance(66 * GiB).total_seal_time
+```
+
+```{python}
+x1e32.performance(2048 * GiB).total_seal_time
+```
+
+```{python}
+x1_pb50 = x1e32.scaled_for_new_hash(pb50)
+```
+
+```{python}
+x1_pb50.performance(66 * GiB).total_seal_time
+```
+
+```{python}
+x1_pb50.performance(2048 * 4 * GiB).total_seal_time
+```
+
+```{python}
+x1_blake2s = x1e32.scaled_for_new_hash(blake2s)
+```
+
+```{python}
+x1_blake2s.performance(66 * GiB).total_seal_time
+```
+
+```{python}
+x1_pb50.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
+```
+
+**We have a first firing solution!**
+
+```{python}
+humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
+```
+
+```{python}
+minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
+```
+
+```{python}
+minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
+```
 
 ```{python}
 

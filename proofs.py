@@ -110,7 +110,7 @@ class Instance(object):
 
     def scale(self, new_hash):
         new_init_args = dict(self.init_args)
-        # FIXME: Scale encoding_replication_time_per_GiB
+        new_init_args['encoding_replication_time_per_GiB'] = new_hash.div_time(self.merkle_tree_hash) * self.encoding_replication_time_per_GiB
         new_constraints = self.constraints * new_hash.constraints / self.merkle_tree_hash.constraints
         new_init_args['constraints'] = new_constraints
         new_init_args['groth_proving_time'] = self.proving_time_per_constraint * new_constraints
@@ -212,8 +212,10 @@ class ZigZag(object):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
     def performance(self, size=GiB):
-        seal_time =  (self.replication_time(size) + self.total_proving_time(size)) * (GiB / size)
-        return Performance(seal_time, self.proof_size())
+        scale = GiB / size
+        seal_time =  scale * (self.replication_time(size) + self.total_proving_time(size))
+        proof_size_per_GiB = scale * self.proof_size()
+        return Performance(seal_time, proof_size_per_GiB)
 
     # This is not right. FIXME by using `justifies_seal_time` to search/solve.
     # def sector_size_required_to_justify_proof_size(self, required_performance):
@@ -240,6 +242,20 @@ class ZigZag(object):
             assert false, "unimplemented"
 
 
+def minimum_viable_sector_size(performance_requirements, zigzag, guess=GiB, iterations_so_far=0, max_iterations=20):
+    if guess < 1: return 0
+    if iterations_so_far >= max_iterations: return 0
+
+    is_viable = zigzag.justifies_seal_time(guess, performance_requirements)
+    if is_viable:
+        recur = minimum_viable_sector_size(performance_requirements, zigzag, guess / 2,
+                                           iterations_so_far=iterations_so_far + 1,
+                                           max_iterations=max_iterations)
+        return guess if recur == 0 else recur
+    else:
+        return minimum_viable_sector_size(performance_requirements, zigzag, guess * 2,
+                                          iterations_so_far = iterations_so_far + 1,
+                                          max_iterations=max_iterations)
 
 
 #    def seal_time_for_sector_size(self, sector_size):
@@ -278,3 +294,6 @@ c = Config(z, m)
 p = z.performance()
 
 print(f"ZigZag nodes: {z.nodes()}")
+x1e32 = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
+x1_pb50 = x1e32.scaled_for_new_hash(pb50)
+print(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
