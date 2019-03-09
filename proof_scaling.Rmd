@@ -13,19 +13,10 @@ jupyter:
 ---
 
 ```{python}
-# %load_ext autoreload
-```
-
-```{python}
-# %autoreload 2
-```
-
-```{python}
 from util import humanize_bytes
-```
-
-```{python}
 from proofs import *
+import matplotlib.pyplot as plt
+import numpy as np
 ```
 
 ```{python}
@@ -97,10 +88,10 @@ porcuquine_blake.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
 ```
 
 *TODO*
- - check all against a range of seal times;
- - make graphs
- - try with pedersen/blake hybrid, varying `root_height`
- - search space for a combination of `root_height` and sector size which justifies seal time
+  - [x] check all against a range of seal times;
+  - [ ] make graphs
+  - [x] try with pedersen/blake hybrid, varying `root_height`
+  - [x] search space for a combination of `root_height` and sector size which justifies seal time
 
 
 ```{python}
@@ -208,8 +199,36 @@ x1_pb50.performance(8 * 1024 * GiB).total_seal_time / x1_blake2s.performance(8 *
 Just about double, at that size. Let's try a range, to be sure. TODO: Graph this — but instead of ratio, just include both points and pedersen. Actually just graph a spread of 10 hybrids to make the relationship clear.
 
 ```{python}
-[x1_pb50.performance(size * GiB).total_seal_time / x1_blake2s.performance(size * GiB).total_seal_time for size in range(1, 8*1024, 160)]
+xs = range(1, 8*1024, 512)
+x1_pedersen_seal_times = [x1e32.performance(size * GiB).total_seal_time for size in xs]
+x1_pb50_seal_times = [x1_pb50.performance(size * GiB).total_seal_time for size in xs]
+blake2s_seal_times = [x1_blake2s.performance(size * GiB).total_seal_time for size in xs]
+blake_advantage_pb50 = list(map(lambda pb50, blake: pb50/blake, x1_pb50_seal_times, blake2s_seal_times))
+blake_advantage_pedersen = list(map(lambda pedersen, blake: pedersen/blake, x1_pedersen_seal_times, blake2s_seal_times))
 ```
+
+```{python}
+f, (ax1, ax2) = plt.subplots(2,1)
+f.set_size_inches(8, 8)
+ax1.axis([0, xs[-1], 0, 40000])
+ax1.plot(xs, x1_pb50_seal_times, label='pb50')
+ax1.plot(xs, blake2s_seal_times, label='blake2s')
+ax1.plot(xs, x1_pedersen_seal_times, label='pedersen')
+ax1.set_xlabel('Sector Size (GiB)')
+ax1.set_ylabel('seal time per GiB')
+ax1.legend()
+ax2.plot(xs, blake_advantage_pb50, label='blake advantage over hybrid')
+ax2.plot(xs, blake_advantage_pedersen, label='blake advantage over pedersen')
+
+ax2.set_xlabel('Sector Size (GiB)')
+ax2.set_ylabel('blake2s advantage')
+ax2.legend()
+plt.show()
+```
+
+Seal rates cross at about 2500 GiB. Pure blake2s advantage increases linearly.
+
+Clearly, past the critical point, pure blake2s provides better performance.
 
 ```{python}
 humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
