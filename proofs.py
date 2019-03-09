@@ -14,6 +14,7 @@
 # ---
 
 import math
+from util import humanize_bytes
 
 class Performance(object):
     """Performance model, defining time and proof size to securely seal 1GiB."""
@@ -74,7 +75,6 @@ pedersen = HashFunction(0.000017993, 1324)
 blake2s = HashFunction(1.0428e-7, 10324)
 
 pb50 = hybrid_hash(pedersen, blake2s, 0.5)
-
 
 class MerkleTree(object):
     def __init__(self, nodes, hash_function):
@@ -257,10 +257,12 @@ def minimum_viable_sector_size(performance_requirements, zigzag, guess=GiB, iter
                                           iterations_so_far = iterations_so_far + 1,
                                           max_iterations=max_iterations)
 
+def minimum_viable_sector_size_for_hybrids(performance_requirements, zigzag):
+    f = lambda r, n : r *(1/n)
 
-#    def seal_time_for_sector_size(self, sector_size):
-
-#    def replication_time(self, machine):
+    return [(f(r, 10), humanize_bytes(minimum_viable_sector_size(performance_requirements,
+                                                  zigzag.scaled_for_new_hash(hybrid_hash(pedersen, blake2s, f(r,10))))))
+            for r in range(0, 11)]
 
 class Machine(object):
     """Machine Model"""

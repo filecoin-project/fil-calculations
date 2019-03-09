@@ -190,6 +190,28 @@ x1_pb50.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
 **We have a first firing solution!**
 
 ```{python}
+x1_blake2s.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
+```
+
+And another. Which has a better (lower) seal time?
+
+```{python}
+x1_blake2s.performance(8 * 1024 * GiB).total_seal_time < x1_pb50.performance(8 * 1024 * GiB).total_seal_time
+```
+
+We have a winner, and by how much?
+
+```{python}
+x1_pb50.performance(8 * 1024 * GiB).total_seal_time / x1_blake2s.performance(8 * 1024 * GiB).total_seal_time
+```
+
+Just about double, at that size. Let's try a range, to be sure. TODO: Graph this — but instead of ratio, just include both points and pedersen. Actually just graph a spread of 10 hybrids to make the relationship clear.
+
+```{python}
+[x1_pb50.performance(size * GiB).total_seal_time / x1_blake2s.performance(size * GiB).total_seal_time for size in range(1, 8*1024, 160)]
+```
+
+```{python}
 humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
 ```
 
@@ -199,6 +221,10 @@ minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
 
 ```{python}
 minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
+```
+
+```{python}
+minimum_viable_sector_size_for_hybrids(filecoin_scaling_requirements, x1e32)
 ```
 
 ```{python}
