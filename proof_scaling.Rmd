@@ -60,11 +60,11 @@ pp.total_seal_time
 ```
 
 ```{python}
-humanize_bytes(p.total_proof_size)
+humanize_bytes(p.proof_size)
 ```
 
 ```{python}
-humanize_bytes(pp.total_proof_size)
+humanize_bytes(pp.proof_size)
 ```
 
 ```{python}
@@ -131,19 +131,19 @@ filecoin_scaling_requirements.total_seal_time
 ```
 
 ```{python}
-filecoin_scaling_requirements.total_proof_size
+filecoin_scaling_requirements.proof_size
 ```
 
 ```{python}
-porcuquine.performance().total_proof_size
+porcuquine.performance().proof_size
 ```
 
 ```{python}
-x1e32.performance(64 * GiB).total_proof_size
+x1e32.performance(64 * GiB).proof_size
 ```
 
 ```{python}
-x1e32.performance(66 * GiB).total_proof_size
+x1e32.performance(66 * GiB).proof_size
 ```
 
 ```{python}
@@ -270,13 +270,13 @@ humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, porcuqu
 
 ```{python}
 pbp = porcuquine_blake2s.performance(16 * GiB)
-pbp.total_proof_size
+pbp.proof_size
 ```
 
 Bummer, that's a bug. Let's dig into it.
 
 ```{python}
-porcuquine.performance(16 * GiB).total_proof_size
+porcuquine.performance(16 * GiB).proof_size
 ```
 
 Actually, it's correct because this is proof-size/GiB. Yay.

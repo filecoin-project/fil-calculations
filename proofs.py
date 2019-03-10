@@ -1,31 +1,26 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.3'
-#       jupytext_version: 0.8.6
-#   kernelspec:
-#     display_name: Python 3
-#     language: python
-#     name: python3
-# ---
-
 import math
 from util import humanize_bytes
 
+GiB = 1024 * 1024 * 1024
+
 class Performance(object):
     """Performance model, defining time and proof size to securely seal 1GiB."""
-    def __init__(self, proof_seconds, proof_bytes):
-        self.total_seal_time = proof_seconds # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
-        self.total_proof_size = proof_bytes # per gigabyte
+    def __init__(self, seal_seconds, proof_bytes, sector_size=GiB):
+        scale = sector_size/GiB
+        self.total_seal_time = seal_seconds/scale # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
+        self.proof_size = proof_bytes / scale # per gigabyte
 
+    # Proof size per sector size. Defaults to standard 1 GiB
+    def proof_size(self, sector_size=GiB):
+        return self.proof_size_per_gigabyte * (sector_size/GiB)
+    #
+    # # Total seal time per sector size. Defaults to standard 1 GiB
+    # def total_seal_time(self, sector_size=GiB):
+    #     return self.total_seal_time_per_GiB * (sector_size/GiB)
+
+    # Does other have performance greater than or equal to self in all dimensions?
     def satisfied_by(self, other):
-        return (other.total_seal_time <= self.total_seal_time) and (other.total_proof_size <= self.total_proof_size)
-
-GiB = 1024 * 1024 * 1024
+        return (other.total_seal_time <= self.total_seal_time) and (other.proof_size <= self.proof_size)
 
 filecoin_scaling_requirements = Performance(2*60*60, 25) # time = 2 vcpu-hrs
 good_performance = Performance(100, 10)
@@ -169,7 +164,8 @@ class ZigZag(object):
 
     def comm_r_star_size(self): return self.hash_size
 
-    def proof_size(self): return (self.circuit_proof_size * self.partitions) + self.comm_d_size() + self.comm_r_size() + self.comm_r_star_size()
+    def proof_size(self): return (self.circuit_proof_size * self.partitions) \
+                                 + self.comm_d_size() + self.comm_r_size() + self.comm_r_star_size()
 
     # This can be calculated from taper, etc. later.
     def total_challenges(self): return self.challenges
@@ -205,7 +201,8 @@ class ZigZag(object):
 
     def groth_proving_time(self, size=GiB):
         if self.instance:
-            # FIXME: Calculate ratio of constraints for self.sector_size and size. Use to calculate groth proving time for size.
+            # FIXME: Calculate ratio of constraints for self.sector_size and
+            #  size. Use to calculate groth proving time for size.
             return self.instance.groth_proving_time
         else:
             # Calculate a projection, as in the calculator.
@@ -223,7 +220,7 @@ class ZigZag(object):
 
     # TODO: This doesn't yet account for the changes to seal time introduced by changing sector size.
     def sector_size_required_to_justify_seal_time(self, required_performance):
-        # This works because total_proof_size is per 1GiB.
+        # This works because proof_size is per 1GiB.
         return GiB* self.performance().total_seal_time / required_performance.total_seal_time
 
     def justifies_seal_time(self, sector_size, required_performance):
@@ -261,6 +258,9 @@ def minimum_viable_sector_size_for_hybrids(performance_requirements, zigzag):
                                                   zigzag.scaled_for_new_hash(hybrid_hash(pedersen, blake2s, f(r,10))))))
             for r in range(0, 11)]
 
+################################################################################
+#### Unused so far
+
 class Machine(object):
     """Machine Model"""
 
@@ -282,17 +282,7 @@ class Config(object):
         self.proving_machine = machine
         self.zigzag = zigzag
 
-# ###############################################################################
+################################################################################
 
 z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
-zz = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge)
-q = z.scaled_for_new_hash(blake2s)
-
-m = Machine()
-c = Config(z, m)
-p = z.performance()
-
 print(f"ZigZag nodes: {z.nodes()}")
-x1e32 = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarge, partitions=8)
-x1_pb50 = x1e32.scaled_for_new_hash(pb50)
-print(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
