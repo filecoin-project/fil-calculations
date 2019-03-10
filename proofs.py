@@ -89,16 +89,17 @@ class MerkleTree(object):
 # TODO: Make it so this can be extracted directly (and correctly) from the JSON results of the zigzag example.
 class Instance(object):
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
-    def __init__(self, **kwargs):
+    def __init__(self, merkle_tree_hash=pedersen, **kwargs):
         self.init_args = kwargs
         self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
         self.encoding_replication_time_per_GiB = kwargs.get('encoding_replication_time_per_GiB') # vcpu-seconds
-        # Is reported vanilla proving time serial, or do we have to account for parallelism?
+        # Q: Is reported vanilla proving time serial, or do we have to account for parallelism? A: It's parallel
         self.vanilla_proving_time = kwargs.get('vanilla_proving_time') # vcpu-seconds
         self.constraints = kwargs.get('constraints')
         self.groth_proving_time = kwargs.get('groth_proving_time') # vcpu-seconds
         self.proving_time_per_constraint = self.groth_proving_time / self.constraints
-        self.merkle_tree_hash = kwargs.get('merkle_tree_hash', pedersen)
+        #self.merkle_tree_hash = kwargs.get('merkle_tree_hash', pedersen)
+        self.merkle_tree_hash = merkle_tree_hash
         assert self.constraints, "constraints required"
 
     def merkle_tree_replication_time_per_GiB(self):
@@ -135,7 +136,10 @@ porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, constraints
 # Feb 28 20:48:29.006 INFO groth_proving_time: 34734.387995685s seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:274 zigzag, root: filecoin-proofs
 # real wall clock proving time = 20:48:29 - 13:06:22 = 7:42:07 = 27727s
 # vcpu-seconds = 27727s * 128 vcpus = 3549056
-ec2_x1e32_xlarge = Instance(encoding_replication_time_per_GiB=3197, constraints=5572568613, # FIXME: constraints is a projection, bench the real value.
+# Recalculated with --bench-only
+# Mar 09 20:26:00.146 INFO circuit_num_constraints: 696224603, target: stats, place: filecoin-proofs/examples/zigzag.rs:326 zigzag, root: filecoin-proofs
+# Previous projection for constraints was high: 5572568613 (by 2771789)
+ec2_x1e32_xlarge = Instance(encoding_replication_time_per_GiB=3197, constraints=696224603, # FIXME: constraints is a projection, bench the real value.
                             groth_proving_time=3549056,
                             vanilla_proving_time=3297)
 
@@ -152,13 +156,12 @@ class ZigZag(object):
         self.sector_size = kwargs.get('size', GiB) # Bytes, default to 1GiB
         # Sector size must be a power of 2.
         assert math.log2(self.sector_size) % 1 == 0
-
         self.partitions = kwargs.get('partitions', 1)
-
         self.merkle_hash = kwargs.get('merkle_hash', pedersen)
-        self.merkle_tree = MerkleTree(self.nodes(), self.merkle_hash)
-
         assert (self.node_size == self.hash_size)
+
+    def merkle_tree(self, size=GiB):
+        MerkleTree(self.nodes(size), self.merkle_hash)
 
     def comm_d_size(self): return self.hash_size
 
@@ -178,14 +181,14 @@ class ZigZag(object):
         assert (nodes % 1) == 0
         return math.floor(nodes)
 
-    def merkle_time(self, n_trees):
+    def merkle_time(self, n_trees, size=GiB):
         tree_time = self.merkle_tree.time()
         return n_trees * tree_time
 
     def all_merkle_time(self): return self.merkle_time(self.layers + 1)
 
     # Per GiB
-    def replication_time(self, size):
+    def replication_time(self, size=GiB):
         if self.instance:
             # Assumes replication time scales linearly with size.
             return self.instance.replication_time_per_GiB() * (size / GiB)
@@ -193,14 +196,14 @@ class ZigZag(object):
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def vanilla_proving_time(self, size):
+    def vanilla_proving_time(self, size=GiB):
         if self.instance:
             return self.instance.vanilla_proving_time
         else:
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def groth_proving_time(self, size):
+    def groth_proving_time(self, size=GiB):
         if self.instance:
             # FIXME: Calculate ratio of constraints for self.sector_size and size. Use to calculate groth proving time for size.
             return self.instance.groth_proving_time
@@ -208,22 +211,17 @@ class ZigZag(object):
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
-    def total_proving_time(self, size):
+    def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
     def performance(self, size=GiB):
         scale = GiB / size
         seal_time =  scale * (self.replication_time(size) + self.total_proving_time(size))
+        # FIXME: This is wrong. Proofs don't scale linearly with size.
         proof_size_per_GiB = scale * self.proof_size()
         return Performance(seal_time, proof_size_per_GiB)
 
-    # This is not right. FIXME by using `justifies_seal_time` to search/solve.
-    # def sector_size_required_to_justify_proof_size(self, required_performance):
-    #     # This works because total_proof_size is per 1GiB.
-    #     return GiB * self.performance().total_proof_size / required_performance.total_proof_size
-
-
-    # TODO: This doesn't yet account for the changes to seal time introduced by changing sector time.
+    # TODO: This doesn't yet account for the changes to seal time introduced by changing sector size.
     def sector_size_required_to_justify_seal_time(self, required_performance):
         # This works because total_proof_size is per 1GiB.
         return GiB* self.performance().total_seal_time / required_performance.total_seal_time
@@ -240,7 +238,6 @@ class ZigZag(object):
             return ZigZag(**new_init_args)
         else:
             assert false, "unimplemented"
-
 
 def minimum_viable_sector_size(performance_requirements, zigzag, guess=GiB, iterations_so_far=0, max_iterations=20):
     if guess < 1: return 0

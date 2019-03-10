@@ -89,7 +89,7 @@ porcuquine_blake.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
 
 *TODO*
   - [x] check all against a range of seal times;
-  - [ ] make graphs
+  - [x] make graphs
   - [x] try with pedersen/blake hybrid, varying `root_height`
   - [x] search space for a combination of `root_height` and sector size which justifies seal time
 
@@ -199,7 +199,7 @@ x1_pb50.performance(8 * 1024 * GiB).total_seal_time / x1_blake2s.performance(8 *
 Just about double, at that size. Let's try a range, to be sure. TODO: Graph this — but instead of ratio, just include both points and pedersen. Actually just graph a spread of 10 hybrids to make the relationship clear.
 
 ```{python}
-xs = range(1, 8*1024, 512)
+xs = range(1, 8*1024, 64)
 x1_pedersen_seal_times = [x1e32.performance(size * GiB).total_seal_time for size in xs]
 x1_pb50_seal_times = [x1_pb50.performance(size * GiB).total_seal_time for size in xs]
 blake2s_seal_times = [x1_blake2s.performance(size * GiB).total_seal_time for size in xs]
@@ -230,9 +230,20 @@ Seal rates cross at about 2500 GiB. Pure blake2s advantage increases linearly.
 
 Clearly, past the critical point, pure blake2s provides better performance.
 
+
+What's the minimum viable sector size for a 50/50 pedersen/blake2s hybrid on x1e32?
+
 ```{python}
 humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
 ```
+
+Blake?
+
+```{python}
+humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_blake2s))
+```
+
+Pedersen?
 
 ```{python}
 minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
@@ -242,9 +253,33 @@ minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
 minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
 ```
 
+On porcuquine's prover?
+
 ```{python}
-minimum_viable_sector_size_for_hybrids(filecoin_scaling_requirements, x1e32)
+minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
 ```
+
+On porcquine's prover with blake2s?
+
+```{python}
+porcuquine_blake2s = porcuquine.scaled_for_new_hash(blake2s)
+humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine_blake2s))
+```
+
+**Wait, what?**
+
+```{python}
+pbp = porcuquine_blake2s.performance(16 * GiB)
+pbp.total_proof_size
+```
+
+Bummer, that's a bug. Let's dig into it.
+
+```{python}
+porcuquine.performance(16 * GiB).total_proof_size
+```
+
+Actually, it's correct because this is proof-size/GiB. Yay.
 
 ```{python}
 
