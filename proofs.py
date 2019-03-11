@@ -77,9 +77,22 @@ class MerkleTree(object):
         self.hash_function = hash_function
         self.height = math.ceil(math.log2(nodes)) + 1
 
+    def hash_count(self):
+        return self.nodes - 1
+
     # Assuming no parallelism
     def time(self):
-        return self.hash_function.time() * (self.nodes - 1)
+        return self.hash_function.time() * self.hash_count()
+
+    def constraints(self):
+        return self.hash_function.constraints() * self.hash_count()
+
+    def proof_hashes(self):
+        return self.height
+
+    def proof_constraints(self):
+        return self.proof_hashes() * self.hash_function.constraints
+
 
 # TODO: Make it so this can be extracted directly (and correctly) from the JSON results of the zigzag example.
 class Instance(object):
@@ -89,6 +102,7 @@ class Instance(object):
         self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
         self.encoding_replication_time_per_GiB = kwargs.get('encoding_replication_time_per_GiB') # vcpu-seconds
         # Q: Is reported vanilla proving time serial, or do we have to account for parallelism? A: It's parallel
+        self.sector_size = kwargs.get('sector_size')
         self.vanilla_proving_time = kwargs.get('vanilla_proving_time') # vcpu-seconds
         self.constraints = kwargs.get('constraints')
         self.groth_proving_time = kwargs.get('groth_proving_time') # vcpu-seconds
@@ -104,13 +118,12 @@ class Instance(object):
     def replication_time_per_GiB(self):
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
-    def scale(self, new_hash):
+    def scale(self, constraints, new_hash):
         new_init_args = dict(self.init_args)
+        # TODO: mirror more sophisticated constraint calculation for replication time.
         new_init_args['encoding_replication_time_per_GiB'] = new_hash.div_time(self.merkle_tree_hash) * self.encoding_replication_time_per_GiB
-        new_constraints = self.constraints * new_hash.constraints / self.merkle_tree_hash.constraints
-        new_init_args['constraints'] = new_constraints
-        new_init_args['groth_proving_time'] = self.proving_time_per_constraint * new_constraints
-        new_init_args['merkle_tree_hash'] = new_hash
+        new_init_args['constraints'] = constraints
+        new_init_args['groth_proving_time'] = self.proving_time_per_constraint * constraints
         return Instance(**new_init_args)
         
 # ➜  rust-proofs git:(zigzag-example-taper) ✗ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 5 --size 262144 --groth
@@ -122,7 +135,8 @@ class Instance(object):
 # real wall clock proving time = 22:57:57 - 22:55:23 = 2:34 = 154s
 # vcpu-seconds = 154s * 28 vcpus = 4312
 # FIXME: replication_time here and below is only serial time. It ignores parallel merkle-tree-generation time. Assumes (safely) that was the bottleneck in measured time.
-porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, constraints=31490555, groth_proving_time=4312, vanilla_proving_time=80.99)
+porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, sector_size=268435456, constraints=31490555,
+                             groth_proving_time=4312, vanilla_proving_time=80.99)
 
 # [ec2-user@ip-172-31-47-121 rust-fil-proofs]$ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 333 --taper-layers 7 --taper 0.3 --size 262144 --groth --no-bench --partitions 8
 # Feb 28 09:58:40.228 INFO replication_time/GiB: 3197.191021367s, target: stats, place: filecoin-proofs/examples/zigzag.rs:178 zigzag, root: filecoin-proofs
@@ -131,10 +145,11 @@ porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, constraints
 # Feb 28 20:48:29.006 INFO groth_proving_time: 34734.387995685s seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:274 zigzag, root: filecoin-proofs
 # real wall clock proving time = 20:48:29 - 13:06:22 = 7:42:07 = 27727s
 # vcpu-seconds = 27727s * 128 vcpus = 3549056
-# Recalculated with --bench-only
+# Recalculated withn --bench-only
 # Mar 09 20:26:00.146 INFO circuit_num_constraints: 696224603, target: stats, place: filecoin-proofs/examples/zigzag.rs:326 zigzag, root: filecoin-proofs
 # Previous projection for constraints was high: 5572568613 (by 2771789)
 ec2_x1e32_xlarge = Instance(encoding_replication_time_per_GiB=3197, constraints=696224603, # FIXME: constraints is a projection, bench the real value.
+                            sector_size = 268435456,
                             groth_proving_time=3549056,
                             vanilla_proving_time=3297)
 
@@ -148,15 +163,24 @@ class ZigZag(object):
         self.circuit_proof_size = kwargs.get('circuit_proof_size', 192) # bytes
         self.hash_size = kwargs.get('hash_size', 32) # bytes
         self.node_size = kwargs.get('hash_size', 32) # bytes
-        self.sector_size = kwargs.get('size', GiB) # Bytes, default to 1GiB
+        # TODO: Should we just remove sector_size from this model, since it's
+        #  always being varied? Having it here confuses expectations.
+        self.size = kwargs.get('size', GiB) # Bytes, default to 1GiB
         # Sector size must be a power of 2.
-        assert math.log2(self.sector_size) % 1 == 0
+        assert math.log2(self.size) % 1 == 0
         self.partitions = kwargs.get('partitions', 1)
         self.merkle_hash = kwargs.get('merkle_hash', pedersen)
+        self.kdf_hash = kwargs.get('kdf_hash', blake2s)
         assert (self.node_size == self.hash_size)
 
+    def sector_size(self):
+        if self.instance:
+            return self.instance.sector_size
+        else:
+            return self.size
+
     def merkle_tree(self, size=GiB):
-        MerkleTree(self.nodes(size), self.merkle_hash)
+        return MerkleTree(self.nodes(size), self.merkle_hash)
 
     def comm_d_size(self): return self.hash_size
 
@@ -172,8 +196,8 @@ class ZigZag(object):
 
     def degree(self): return self.base_degree + self.expansion_degree
 
-    def nodes(self):
-        nodes = self.sector_size / self.node_size
+    def nodes(self, size):
+        nodes = size / self.node_size
         assert (nodes % 1) == 0
         return math.floor(nodes)
 
@@ -211,10 +235,30 @@ class ZigZag(object):
     def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
+    def encoding_operations(self):
+        return self.nodes(self.sector_size()) * self.security.layers
+
+    def hashing_constraints(self, size):
+        # FIXME: This doesn't account for size of kdf vs merkle hash. Set kdf_hash_factor correctly.
+        kdf_hash_factor = 1
+        merkle_tree = self.merkle_tree(size)
+        return merkle_tree.proof_constraints() + (self.kdf_hash.constraints * kdf_hash_factor ) * \
+               self.security.total_challenges
+
+    def non_hashing_contraints(self, size):
+        ## FIXME: This doesn't account for sector size.
+        print(f"instance constraints: {self.instance.constraints}")
+        print(f"sector size: {self.sector_size()}")
+        print(f"instance constraints * sector size / GiB: {self.instance.constraints * (self.sector_size() / GiB)}")
+        print(f"hashing constraints: {self.hashing_constraints(size)}")
+
+        return self.instance.constraints - self.hashing_constraints(size)
+            #* (self.sector_size() / GiB) \
+
+
     def performance(self, size=GiB):
         scale = GiB / size
         seal_time =  scale * (self.replication_time(size) + self.total_proving_time(size))
-        # FIXME: This is wrong. Proofs don't scale linearly with size.
         proof_size_per_GiB = scale * self.proof_size()
         return Performance(seal_time, proof_size_per_GiB)
 
@@ -228,8 +272,16 @@ class ZigZag(object):
 
     def scaled_for_new_hash(self, new_hash):
         new_init_args = dict(self.init_args)
+        # NOTE: This assumes proof size does not change when changing hash, but depending on number of constraints,
+        # that may not be accurate — since we may need to add partitions as parameter and memory requirements grow.
         if self.instance:
-            scaled_instance = self.instance.scale(new_hash)
+            constraint_scale = new_hash.constraints / self.merkle_hash.constraints
+            instance_size = self.instance.sector_size
+            new_hashing_constraints = self.hashing_constraints(instance_size) * constraint_scale
+            new_constraints = self.non_hashing_contraints(instance_size) + new_hashing_constraints
+
+            scaled_instance = self.instance.scale(new_constraints, new_hash)
+
             new_init_args['instance'] = scaled_instance
             new_init_args['merkle_hash'] = new_hash
             return ZigZag(**new_init_args)
@@ -285,4 +337,4 @@ class Config(object):
 ################################################################################
 
 z = ZigZag(security=filecoin_security_requirements, instance=porcuquine_prover)
-print(f"ZigZag nodes: {z.nodes()}")
+print(f"ZigZag nodes: {z.nodes(z.sector_size())}")

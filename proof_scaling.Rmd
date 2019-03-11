@@ -36,14 +36,6 @@ x1e32 = ZigZag(security=filecoin_security_requirements, instance=ec2_x1e32_xlarg
 ```
 
 ```{python}
-humanize_bytes(porcuquine.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements))
-```
-
-```{python}
-humanize_bytes(x1e32.sector_size_required_to_justify_seal_time(filecoin_scaling_requirements))
-```
-
-```{python}
 p = porcuquine.performance()
 ```
 
@@ -58,6 +50,8 @@ p.total_seal_time
 ```{python}
 pp.total_seal_time
 ```
+
+`pp.total_seal_time` is much higher than `p.total_seal_time` because of 8 partitions and sufficient challenges.
 
 ```{python}
 humanize_bytes(p.proof_size)
@@ -226,10 +220,21 @@ ax2.legend()
 plt.show()
 ```
 
-Seal rates cross at about 2500 GiB. Pure blake2s advantage increases linearly.
-
-Clearly, past the critical point, pure blake2s provides better performance.
-
+```{python}
+last_diff = None
+last_x = None
+cross = -1
+for (x, blake, pedersen) in zip(xs, blake2s_seal_times, x1_pedersen_seal_times):
+    diff = abs(blake - pedersen)
+    if last_diff and last_diff < diff:
+        cross = last_x * GiB
+        break
+    last_diff = diff
+    last_x = x
+            
+print(f"Seal rates cross at about {humanize_bytes(cross)}")
+cross
+```
 
 What's the minimum viable sector size for a 50/50 pedersen/blake2s hybrid on x1e32?
 
@@ -280,6 +285,17 @@ porcuquine.performance(16 * GiB).proof_size
 ```
 
 Actually, it's correct because this is proof-size/GiB. Yay.
+
+
+Hmmmm… maybe not — proof-size/Gib should change when changing hash.
+
+```{python}
+pb2 = porcuquine.scaled_for_new_hash(blake2s)
+```
+
+```{python}
+pb2.performance(16 * GiB).proof_size
+```
 
 ```{python}
 
