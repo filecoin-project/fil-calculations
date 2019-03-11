@@ -43,7 +43,8 @@ class Security(object):
             and (other.total_challenges >= self.total_challenges)
 
 # FIXME: What is the exact real number of challenges?
-filecoin_security_requirements = Security(base_degree=5, expansion_degree=8, layers=10, sloth_iter=0, total_challenges=8848)
+filecoin_security_requirements = Security(base_degree=5, expansion_degree=8, layers=10, sloth_iter=0,
+                                          total_challenges=8848)
 
 class HashFunction(object):
     ## For now, assume 64 byte input, 32 byte output
@@ -138,6 +139,10 @@ class Instance(object):
 porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, sector_size=268435456, constraints=31490555,
                              groth_proving_time=4312, vanilla_proving_time=80.99)
 
+# From DIZK vs Bellman table. In vcpu seconds
+def projected_proving_time(constraints):
+    return constraints * (2.785 * 60 * 6) / 16000000
+
 # [ec2-user@ip-172-31-47-121 rust-fil-proofs]$ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 333 --taper-layers 7 --taper 0.3 --size 262144 --groth --no-bench --partitions 8
 # Feb 28 09:58:40.228 INFO replication_time/GiB: 3197.191021367s, target: stats, place: filecoin-proofs/examples/zigzag.rs:178 zigzag, root: filecoin-proofs
 # Feb 28 10:53:37.132 INFO vanilla_proving_time: 3296.904225516 seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:210 zigzag, root: filecoin-proofs
@@ -145,6 +150,7 @@ porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, sector_size
 # Feb 28 20:48:29.006 INFO groth_proving_time: 34734.387995685s seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:274 zigzag, root: filecoin-proofs
 # real wall clock proving time = 20:48:29 - 13:06:22 = 7:42:07 = 27727s
 # vcpu-seconds = 27727s * 128 vcpus = 3549056
+# vcpu-seconds = 27227
 # Recalculated withn --bench-only
 # Mar 09 20:26:00.146 INFO circuit_num_constraints: 696224603, target: stats, place: filecoin-proofs/examples/zigzag.rs:326 zigzag, root: filecoin-proofs
 # Previous projection for constraints was high: 5572568613 (by 2771789)
@@ -152,6 +158,13 @@ ec2_x1e32_xlarge = Instance(encoding_replication_time_per_GiB=3197, constraints=
                             sector_size = 268435456,
                             groth_proving_time=3549056,
                             vanilla_proving_time=3297)
+
+projected_instance = Instance(encoding_replication_time_per_GiB=3197, constraints=696224603,
+                              sector_size = 268435456,
+                              groth_proving_time= projected_proving_time(696224603),
+                              vanilla_proving_time=3297)
+
+
 
 class ZigZag(object):
     """ZigZag Model"""
@@ -290,6 +303,7 @@ class ZigZag(object):
 
 def minimum_viable_sector_size(performance_requirements, zigzag, guess=GiB, iterations_so_far=0, max_iterations=20):
     if guess < 1: return 0
+    #TODO: if guess < minimum sector size for proof size: return the minimum. Need to calculate.
     if iterations_so_far >= max_iterations: return 0
 
     is_viable = zigzag.justifies_seal_time(guess, performance_requirements)

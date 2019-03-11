@@ -255,46 +255,16 @@ minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
 ```
 
 ```{python}
-minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
-```
-
-On porcuquine's prover?
-
-```{python}
-minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine)
-```
-
-On porcquine's prover with blake2s?
-
-```{python}
-porcuquine_blake2s = porcuquine.scaled_for_new_hash(blake2s)
-humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, porcuquine_blake2s))
-```
-
-**Wait, what?**
-
-```{python}
-pbp = porcuquine_blake2s.performance(16 * GiB)
-pbp.proof_size
-```
-
-Bummer, that's a bug. Let's dig into it.
-
-```{python}
-porcuquine.performance(16 * GiB).proof_size
-```
-
-Actually, it's correct because this is proof-size/GiB. Yay.
-
-
-Hmmmm… maybe not — proof-size/Gib should change when changing hash.
-
-```{python}
-pb2 = porcuquine.scaled_for_new_hash(blake2s)
+projected_pedersen = ZigZag(security=filecoin_security_requirements, instance=projected_instance, partitions=8)
+projected_blake2s = projected_pedersen.scaled_for_new_hash(blake2s)
 ```
 
 ```{python}
-pb2.performance(16 * GiB).proof_size
+humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_pedersen))
+```
+
+```{python}
+humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_blake2s))
 ```
 
 ```{python}
