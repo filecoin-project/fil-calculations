@@ -234,15 +234,3 @@ humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, project
 ```{python}
 humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_blake2s))
 ```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
