@@ -195,13 +195,13 @@ x1_pb50.performance(8 * 1024 * GiB).total_seal_time / x1_blake2s.performance(8 *
 Just about double, at that size. Let's try a range, to be sure. TODO: Graph this — but instead of ratio, just include both points and pedersen. Actually just graph a spread of 10 hybrids to make the relationship clear.
 
 ```{python}
-graph_hash_seal_times(x1e32)
+graph_hash_seal_times(x1e32, filecoin_scaling_requirements)
 ```
 
 ```{python}
 projected_pedersen = ZigZag(security=filecoin_security_requirements, instance=projected_instance, partitions=8)
 projected_blake2s = projected_pedersen.scaled_for_new_hash(blake2s)
-graph_hash_seal_times(projected_pedersen)
+graph_hash_seal_times(projected_pedersen, filecoin_scaling_requirements)
 ```
 
 What's the minimum viable sector size for a 50/50 pedersen/blake2s hybrid on x1e32?
@@ -233,6 +233,14 @@ humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, project
 
 ```{python}
 humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_blake2s))
+```
+
+```{python}
+
+```
+
+```{python}
+
 ```
 
 ```{python}
