@@ -1,6 +1,6 @@
 from proofs import *
 import matplotlib.pyplot as plt
-import numpy as np
+
 
 def find_approximate_simple_crossing(xs, points_a, points_b):
     last_diff = None

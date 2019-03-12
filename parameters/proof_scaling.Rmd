@@ -16,6 +16,7 @@ jupyter:
 from util import humanize_bytes
 from proofs import *
 from proofs_analysis import *
+from perf_data import *
 import matplotlib.pyplot as plt
 import numpy as np
 ```
