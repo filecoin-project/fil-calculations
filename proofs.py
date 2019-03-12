@@ -100,6 +100,7 @@ class Instance(object):
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
     def __init__(self, merkle_tree_hash=pedersen, **kwargs):
         self.init_args = kwargs
+        self.description = kwargs.get('description')
         self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
         self.encoding_replication_time_per_GiB = kwargs.get('encoding_replication_time_per_GiB') # vcpu-seconds
         # Q: Is reported vanilla proving time serial, or do we have to account for parallelism? A: It's parallel
@@ -136,8 +137,12 @@ class Instance(object):
 # real wall clock proving time = 22:57:57 - 22:55:23 = 2:34 = 154s
 # vcpu-seconds = 154s * 28 vcpus = 4312
 # FIXME: replication_time here and below is only serial time. It ignores parallel merkle-tree-generation time. Assumes (safely) that was the bottleneck in measured time.
-porcuquine_prover = Instance(encoding_replication_time_per_GiB=2588, sector_size=268435456, constraints=31490555,
-                             groth_proving_time=4312, vanilla_proving_time=80.99)
+porcuquine_prover = Instance(description="Porcuquine Prover (64GiB, 14 cores)",
+                             encoding_replication_time_per_GiB=2588,
+                             sector_size=268435456,
+                             constraints=31490555,
+                             groth_proving_time=4312,
+                             vanilla_proving_time=80.99)
 
 # From DIZK vs Bellman table. In vcpu seconds
 def projected_proving_time(constraints):
@@ -154,12 +159,16 @@ def projected_proving_time(constraints):
 # Recalculated withn --bench-only
 # Mar 09 20:26:00.146 INFO circuit_num_constraints: 696224603, target: stats, place: filecoin-proofs/examples/zigzag.rs:326 zigzag, root: filecoin-proofs
 # Previous projection for constraints was high: 5572568613 (by 2771789)
-ec2_x1e32_xlarge = Instance(encoding_replication_time_per_GiB=3197, constraints=696224603, # FIXME: constraints is a projection, bench the real value.
+ec2_x1e32_xlarge = Instance(description='EC2 x1e32.xlarge pedersen',
+                            encoding_replication_time_per_GiB=3197,
+                            constraints=696224603,
                             sector_size = 268435456,
                             groth_proving_time=3549056,
                             vanilla_proving_time=3297)
 
-projected_instance = Instance(encoding_replication_time_per_GiB=3197, constraints=696224603,
+projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with projected proof times',
+                              encoding_replication_time_per_GiB=3197,
+                              constraints=696224603,
                               sector_size = 268435456,
                               groth_proving_time= projected_proving_time(696224603),
                               vanilla_proving_time=3297)
@@ -185,6 +194,10 @@ class ZigZag(object):
         self.merkle_hash = kwargs.get('merkle_hash', pedersen)
         self.kdf_hash = kwargs.get('kdf_hash', blake2s)
         assert (self.node_size == self.hash_size)
+
+    def description(self):
+        return self.instance and self.instance.description or "undescribed"
+
 
     def sector_size(self):
         if self.instance:
@@ -259,14 +272,7 @@ class ZigZag(object):
                self.security.total_challenges
 
     def non_hashing_contraints(self, size):
-        ## FIXME: This doesn't account for sector size.
-        print(f"instance constraints: {self.instance.constraints}")
-        print(f"sector size: {self.sector_size()}")
-        print(f"instance constraints * sector size / GiB: {self.instance.constraints * (self.sector_size() / GiB)}")
-        print(f"hashing constraints: {self.hashing_constraints(size)}")
-
         return self.instance.constraints - self.hashing_constraints(size)
-            #* (self.sector_size() / GiB) \
 
 
     def performance(self, size=GiB):

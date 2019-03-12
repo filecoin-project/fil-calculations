@@ -15,6 +15,7 @@ jupyter:
 ```{python}
 from util import humanize_bytes
 from proofs import *
+from proofs_analysis import *
 import matplotlib.pyplot as plt
 import numpy as np
 ```
@@ -193,47 +194,13 @@ x1_pb50.performance(8 * 1024 * GiB).total_seal_time / x1_blake2s.performance(8 *
 Just about double, at that size. Let's try a range, to be sure. TODO: Graph this — but instead of ratio, just include both points and pedersen. Actually just graph a spread of 10 hybrids to make the relationship clear.
 
 ```{python}
-xs = range(1, 8*1024, 64)
-x1_pedersen_seal_times = [x1e32.performance(size * GiB).total_seal_time for size in xs]
-x1_pb50_seal_times = [x1_pb50.performance(size * GiB).total_seal_time for size in xs]
-blake2s_seal_times = [x1_blake2s.performance(size * GiB).total_seal_time for size in xs]
-blake_advantage_pb50 = list(map(lambda pb50, blake: pb50/blake, x1_pb50_seal_times, blake2s_seal_times))
-blake_advantage_pedersen = list(map(lambda pedersen, blake: pedersen/blake, x1_pedersen_seal_times, blake2s_seal_times))
+graph_hash_seal_times(x1e32)
 ```
 
 ```{python}
-f, (ax1, ax2) = plt.subplots(2,1)
-f.set_size_inches(8, 8)
-ax1.axis([0, xs[-1], 0, 40000])
-ax1.plot(xs, x1_pb50_seal_times, label='pb50')
-ax1.plot(xs, blake2s_seal_times, label='blake2s')
-ax1.plot(xs, x1_pedersen_seal_times, label='pedersen')
-ax1.set_xlabel('Sector Size (GiB)')
-ax1.set_ylabel('seal time per GiB')
-ax1.legend()
-ax2.plot(xs, blake_advantage_pb50, label='blake advantage over hybrid')
-ax2.plot(xs, blake_advantage_pedersen, label='blake advantage over pedersen')
-
-ax2.set_xlabel('Sector Size (GiB)')
-ax2.set_ylabel('blake2s advantage')
-ax2.legend()
-plt.show()
-```
-
-```{python}
-last_diff = None
-last_x = None
-cross = -1
-for (x, blake, pedersen) in zip(xs, blake2s_seal_times, x1_pedersen_seal_times):
-    diff = abs(blake - pedersen)
-    if last_diff and last_diff < diff:
-        cross = last_x * GiB
-        break
-    last_diff = diff
-    last_x = x
-            
-print(f"Seal rates cross at about {humanize_bytes(cross)}")
-cross
+projected_pedersen = ZigZag(security=filecoin_security_requirements, instance=projected_instance, partitions=8)
+projected_blake2s = projected_pedersen.scaled_for_new_hash(blake2s)
+graph_hash_seal_times(projected_pedersen)
 ```
 
 What's the minimum viable sector size for a 50/50 pedersen/blake2s hybrid on x1e32?
