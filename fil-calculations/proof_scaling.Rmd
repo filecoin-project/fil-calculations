@@ -174,13 +174,13 @@ x1_blake2s.performance(66 * GiB).total_seal_time
 x1_pb50.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
 ```
 
-**We have a first firing solution!**
+~~**We have a first firing solution!**~~ [Not anymore…]
 
 ```{python}
 x1_blake2s.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
 ```
 
-And another. Which has a better (lower) seal time?
+And another. Which has a better (lower) seal time? [**This one is still good, though — with better below.**]
 
 ```{python}
 x1_blake2s.performance(8 * 1024 * GiB).total_seal_time < x1_pb50.performance(8 * 1024 * GiB).total_seal_time
