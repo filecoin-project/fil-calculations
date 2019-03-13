@@ -71,8 +71,6 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-# Just check in .Rmd
-*.ipynb
 
 # pyenv
 .python-version
