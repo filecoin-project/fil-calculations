@@ -23,7 +23,7 @@ class Performance(object):
     def satisfied_by(self, other):
         return (other.total_seal_cycles() <= self.total_seal_cycles()) and (other.proof_size <= self.proof_size)
 
-filecoin_scaling_requirements = Performance(2*60*60, 25, 5.0) # time = 2 vcpu-hrs
+filecoin_scaling_requirements = Performance(2*60*60, 26, 5.0) # time = 2 vcpu-hrs
 good_performance = Performance(100, 10, 6.6)
 bad_performance = Performance(100000000000, 99999999, 1.1)
 
