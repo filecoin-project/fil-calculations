@@ -72,22 +72,22 @@ porcuquine_blake.performance().total_seal_time
 ```
 
 ```{python}
-porcuquine.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+porcuquine.meets_performance_requirements(512 * GiB, filecoin_scaling_requirements)
 ```
 
 ```{python}
-x1e32.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+x1e32.meets_performance_requirements(512 * GiB, filecoin_scaling_requirements)
 ```
 
 ```{python}
-porcuquine_blake.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+porcuquine_blake.meets_performance_requirements(512 * GiB, filecoin_scaling_requirements)
 ```
 
 *TODO*
   - [x] check all against a range of seal times;
   - [x] make graphs
   - [x] try with pedersen/blake hybrid, varying `root_height`
-  - [x] search space for a combination of `root_height` and sector size which justifies seal time
+  - [x] search space for a combination of `root_height` and sector size which meets performance requirements
 
 
 ```{python}
@@ -95,15 +95,15 @@ porcuquine_pb50 = porcuquine.scaled_for_new_hash(pb50)
 ```
 
 ```{python}
-porcuquine_pb50.justifies_seal_time(GiB, filecoin_scaling_requirements)
+porcuquine_pb50.meets_performance_requirements(GiB, filecoin_scaling_requirements)
 ```
 
 ```{python}
-porcuquine_pb50.justifies_seal_time(512 * GiB, filecoin_scaling_requirements)
+porcuquine_pb50.meets_performance_requirements(512 * GiB, filecoin_scaling_requirements)
 ```
 
 ```{python}
-porcuquine_pb50.justifies_seal_time(2048 * GiB, filecoin_scaling_requirements)
+porcuquine_pb50.meets_performance_requirements(2048 * GiB, filecoin_scaling_requirements)
 ```
 
 ```{python}
@@ -171,13 +171,13 @@ x1_blake2s.performance(66 * GiB).total_seal_time
 ```
 
 ```{python}
-x1_pb50.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
+x1_pb50.meets_performance_requirements(2048 * 4 * GiB, filecoin_scaling_requirements)
 ```
 
 ~~**We have a first firing solution!**~~ [Not anymore…]
 
 ```{python}
-x1_blake2s.justifies_seal_time(2048 * 4 * GiB, filecoin_scaling_requirements)
+x1_blake2s.meets_performance_requirements(2048 * 4 * GiB, filecoin_scaling_requirements)
 ```
 
 And another. Which has a better (lower) seal time? [**This one is still good, though — with better below.**]
@@ -207,19 +207,19 @@ graph_hash_seal_times(projected_pedersen, filecoin_scaling_requirements)
 What's the minimum viable sector size for a 50/50 pedersen/blake2s hybrid on x1e32?
 
 ```{python}
-humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_pb50))
+humanize_bytes(x1_pb50.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 Blake?
 
 ```{python}
-humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, x1_blake2s))
+humanize_bytes(x1_blake2s.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 Pedersen?
 
 ```{python}
-minimum_viable_sector_size(filecoin_scaling_requirements, x1e32)
+humanize_bytes(x1e32.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 ```{python}
@@ -228,9 +228,23 @@ projected_blake2s = projected_pedersen.scaled_for_new_hash(blake2s)
 ```
 
 ```{python}
-humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_pedersen))
+humanize_bytes(projected_pedersen.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 ```{python}
-humanize_bytes(minimum_viable_sector_size(filecoin_scaling_requirements, projected_blake2s))
+humanize_bytes(projected_blake2s.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+```{python}
+projected_blake2s.total_proving_time(128 * GiB)
+```
+
+```{python}
+projected_pedersen.total_proving_time(128 * GiB)
+```
+
+Hmmmmm, something is not right with the constraint projection.
+
+```{python}
+
 ```

@@ -1,41 +1,42 @@
 import math
+import copy
 from util import humanize_bytes
 
 GiB = 1024 * 1024 * 1024
 
 class Performance(object):
     """Performance model, defining time and proof size to securely seal 1GiB."""
-    def __init__(self, seal_seconds, proof_bytes, sector_size=GiB):
+    def __init__(self, seal_seconds, proof_bytes, clock_speed_ghz, sector_size=GiB):
         scale = sector_size/GiB
         self.total_seal_time = seal_seconds/scale # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
         self.proof_size = proof_bytes / scale # per gigabyte
+        self.clock_speed_ghz = clock_speed_ghz # GHz
+
+    def total_seal_cycles(self):
+        return self.total_seal_time * self.clock_speed_ghz * (10**9)
 
     # Proof size per sector size. Defaults to standard 1 GiB
     def proof_size(self, sector_size=GiB):
         return self.proof_size_per_gigabyte * (sector_size/GiB)
-    #
-    # # Total seal time per sector size. Defaults to standard 1 GiB
-    # def total_seal_time(self, sector_size=GiB):
-    #     return self.total_seal_time_per_GiB * (sector_size/GiB)
 
     # Does other have performance greater than or equal to self in all dimensions?
     def satisfied_by(self, other):
-        return (other.total_seal_time <= self.total_seal_time) and (other.proof_size <= self.proof_size)
+        return (other.total_seal_cycles() <= self.total_seal_cycles()) and (other.proof_size <= self.proof_size)
 
-filecoin_scaling_requirements = Performance(2*60*60, 25) # time = 2 vcpu-hrs
-good_performance = Performance(100, 10)
-bad_performance = Performance(100000000000, 99999999)
+filecoin_scaling_requirements = Performance(2*60*60, 25, 5.0) # time = 2 vcpu-hrs
+good_performance = Performance(100, 10, 6.6)
+bad_performance = Performance(100000000000, 99999999, 1.1)
 
 assert filecoin_scaling_requirements.satisfied_by(good_performance)
 assert not filecoin_scaling_requirements.satisfied_by(bad_performance)
 
 class Security(object):
-    def __init__(self, **kwargs):
-        self.base_degree = kwargs.get('base_degree')
-        self.expansion_degree = kwargs.get('expansion_degree')
-        self.layers = kwargs.get('layers')
-        self.sloth_iter = kwargs.get('sloth_iter')
-        self.total_challenges = kwargs.get('total_challenges')
+    def __init__(self, *, base_degree, expansion_degree, layers, total_challenges, sloth_iter=0):
+        self.base_degree = base_degree
+        self.expansion_degree = expansion_degree
+        self.layers = layers
+        self.sloth_iter = sloth_iter
+        self.total_challenges = total_challenges
 
     def satisfied_by(self, other):
         return (other.base_degree >= self.base_degree) and (other.expansion_degree >= self.expansion_degree) \
@@ -67,7 +68,10 @@ def hybrid_hash(leaf_hash, root_hash, root_fraction):
     constraints = (root_hash.constraints * root_fraction) + (leaf_hash.constraints * leaf_fraction)
     return HashFunction(hash_time, constraints)
 
-pedersen = HashFunction(0.000017993, 1324)
+#pedersen = HashFunction(0.000017993, 1324)
+# Based on Merklepor, size 1024 (path length 6), 1 challenge = 6914 constraints; 2 challengs = 13827
+pedersen = HashFunction(0.000017993, 1152)
+
 blake2s = HashFunction(1.0428e-7, 10324)
 
 pb50 = hybrid_hash(pedersen, blake2s, 0.5)
@@ -95,78 +99,105 @@ class MerkleTree(object):
         return self.proof_hashes() * self.hash_function.constraints
 
 
+class Machine(object):
+    """Machine Model"""
+
+    def __init__(self, *, ram_gb=None, cores=None, core_vcpus=2, clock_speed_ghz, hourly_cost=None):
+        self.ram_gb = ram_gb # GiB
+        self.cores = cores
+        self.core_vcpus = core_vcpus
+        self.clock_speed_ghz = clock_speed_ghz
+        self.hourly_cost = hourly_cost
+
 # TODO: Make it so this can be extracted directly (and correctly) from the JSON results of the zigzag example.
 class Instance(object):
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
-    def __init__(self, merkle_tree_hash=pedersen, **kwargs):
-        self.init_args = kwargs
-        self.description = kwargs.get('description')
-        self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
-        self.encoding_replication_time_per_GiB = kwargs.get('encoding_replication_time_per_GiB') # vcpu-seconds
+    def __init__(self, merkle_tree_hash=pedersen, *, description="",
+                 security=filecoin_security_requirements, # Assume we are using secure params if not otherwise specified.
+                 encoding_replication_time_per_GiB,
+                 sector_size,
+                 vanilla_proving_time=0,
+                 constraints,
+                 groth_proving_time,
+                 machine,
+                 layers=11, # FIXME: require this parameter
+              ):
+        # TODO: Might be cleaner to use @dataclass.
+        self.description = description
+        self.security = security
+        self.encoding_replication_time_per_GiB = encoding_replication_time_per_GiB # vcpu-seconds
         # Q: Is reported vanilla proving time serial, or do we have to account for parallelism? A: It's parallel
-        self.sector_size = kwargs.get('sector_size')
-        self.vanilla_proving_time = kwargs.get('vanilla_proving_time') # vcpu-seconds
-        self.constraints = kwargs.get('constraints')
-        self.groth_proving_time = kwargs.get('groth_proving_time') # vcpu-seconds
-        self.proving_time_per_constraint = self.groth_proving_time / self.constraints
-        #self.merkle_tree_hash = kwargs.get('merkle_tree_hash', pedersen)
+        self.sector_size = sector_size
+        self.vanilla_proving_time = vanilla_proving_time # vcpu-seconds
+        self.constraints = constraints
+        self.groth_proving_time = groth_proving_time # vcpu-seconds
         self.merkle_tree_hash = merkle_tree_hash
+        self.layers = layers
+        self.machine = machine
+        self.post_init()
+
+    def post_init(self):
+        self.proving_time_per_constraint = self.groth_proving_time / self.constraints
         assert self.constraints, "constraints required"
+        return self
 
     def merkle_tree_replication_time_per_GiB(self):
-        # For now, assume merkle tree uses pedersen hashes.
-        return MerkleTree(GiB / 32, self.merkle_tree_hash).time() * 11  # Grrr... hard-coding layers, needs to move to ZigZag in refactor.
+        # FIXME: Don't hard-code 32.
+        return MerkleTree(GiB / 32, self.merkle_tree_hash).time() * (self.layers + 1)  # Grrr... layers doesn't really
+        # belong in Instance, but we need it here. Move to ZigZag in refactor.
 
     def replication_time_per_GiB(self):
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
     def scale(self, constraints, new_hash):
-        new_init_args = dict(self.init_args)
+        new_instance = copy.deepcopy(self)
         # TODO: mirror more sophisticated constraint calculation for replication time.
-        new_init_args['encoding_replication_time_per_GiB'] = new_hash.div_time(self.merkle_tree_hash) * self.encoding_replication_time_per_GiB
-        new_init_args['constraints'] = constraints
-        new_init_args['groth_proving_time'] = self.proving_time_per_constraint * constraints
-        return Instance(**new_init_args)
-
-
+        new_instance.encoding_replication_time_per_GiB = new_hash.div_time(self.merkle_tree_hash) * \
+                                                         self.encoding_replication_time_per_GiB
+        new_instance.constraints = constraints
+        new_instance.groth_proving_time = self.proving_time_per_constraint * constraints
+        return new_instance.post_init()
 
 class ZigZag(object):
     """ZigZag Model"""
 
-    def __init__(self, **kwargs):
-        self.init_args = kwargs
-        self.security = kwargs.get('security', filecoin_security_requirements) # Assume we are using secure params if not otherwise specified.
-        self.instance = kwargs.get('instance') # Optional Instance.
-        self.circuit_proof_size = kwargs.get('circuit_proof_size', 192) # bytes
-        self.hash_size = kwargs.get('hash_size', 32) # bytes
-        self.node_size = kwargs.get('hash_size', 32) # bytes
-        # TODO: Should we just remove sector_size from this model, since it's
-        #  always being varied? Having it here confuses expectations.
-        self.size = kwargs.get('size', GiB) # Bytes, default to 1GiB
-        # Sector size must be a power of 2.
+    def __init__(self, *,
+                 security=filecoin_security_requirements,  # Assume we are using secure params if not otherwise specified.
+                 instance=None,
+                 circuit_proof_size=192,
+                 hash_size=32,
+                 size=GiB,
+                 partitions=1,
+                 merkle_hash=pedersen,
+                 kdf_hash=blake2s
+                 ):
+        self.security = security
+        self.instance = instance # Optional Instance.
+        self.circuit_proof_size = circuit_proof_size # bytes
+        self.hash_size = hash_size
+        self.size = size # Bytes, default to 1GiB
+        self.partitions = partitions
+        self.merkle_hash = merkle_hash
+        self.kdf_hash = kdf_hash
+        self.post_init()
+
+    def post_init(self):
+        self.node_size = self.hash_size
         assert math.log2(self.size) % 1 == 0
-        self.partitions = kwargs.get('partitions', 1)
-        self.merkle_hash = kwargs.get('merkle_hash', pedersen)
-        self.kdf_hash = kwargs.get('kdf_hash', blake2s)
         assert (self.node_size == self.hash_size)
+        return self
 
     def description(self):
-        return self.instance and self.instance.description or "undescribed"
-
+        return  self.instance.description if self.instance else "undescribed"
 
     def sector_size(self):
-        if self.instance:
-            return self.instance.sector_size
-        else:
-            return self.size
+        return self.instance.sector_size if self.instance else self.size
 
     def merkle_tree(self, size=GiB):
         return MerkleTree(self.nodes(size), self.merkle_hash)
 
     def comm_d_size(self): return self.hash_size
-
     def comm_r_size(self): return self.hash_size
-
     def comm_r_star_size(self): return self.hash_size
 
     def proof_size(self): return (self.circuit_proof_size * self.partitions) \
@@ -175,28 +206,31 @@ class ZigZag(object):
     # This can be calculated from taper, etc. later.
     def total_challenges(self): return self.challenges
 
-    def degree(self): return self.base_degree + self.expansion_degree
+    def degree(self): return self.security.base_degree + self.security.expansion_degree
 
     def nodes(self, size):
         nodes = size / self.node_size
         assert (nodes % 1) == 0
         return math.floor(nodes)
 
-    def merkle_time(self, n_trees, size=GiB):
+    def merkle_time(self, n_trees):
         tree_time = self.merkle_tree.time()
         return n_trees * tree_time
 
     def all_merkle_time(self): return self.merkle_time(self.layers + 1)
 
-    # Per GiB
-    def replication_time(self, size=GiB):
-        if self.instance:
-            # Assumes replication time scales linearly with size.
-            return self.instance.replication_time_per_GiB() * (size / GiB)
-        else:
-            # Calculate a projection, as in the calculator.
-            assert false, "unimplemented"
 
+    # How many encoding operations does it take to replicate?
+    def encoding_operations(self):
+        return self.nodes(self.sector_size()) * self.security.layers
+
+    # Calculate replication time for data of size.
+    def replication_time(self, size=GiB):
+        assert self.instance, "unimplemented" # TODO: calculate a projection, as in the calculator.
+        # Assumes replication time scales linearly with size.
+        return self.instance.replication_time_per_GiB() * (size / GiB)
+
+    # Calculate vanilla proving time for data of size.p
     def vanilla_proving_time(self, size=GiB):
         if self.instance:
             return self.instance.vanilla_proving_time
@@ -204,101 +238,92 @@ class ZigZag(object):
             # Calculate a projection, as in the calculator.
             assert false, "unimplemented"
 
+    # Calculate groth proving time for data of size.
     def groth_proving_time(self, size=GiB):
-        if self.instance:
-            # FIXME: Calculate ratio of constraints for self.sector_size and
-            #  size. Use to calculate groth proving time for size.
-            return self.instance.groth_proving_time
-        else:
-            # Calculate a projection, as in the calculator.
-            assert false, "unimplemented"
+        assert self.instance, "unimplemented" # TODO: Calculate a projection, as in the calculator.
+        # FIXME: Calculate ratio of constraints for self.sector_size and
+        #  size. Use to calculate groth proving time for size.
+        return self.instance.groth_proving_time
 
+    # Calculate total_proving_time for data of `size`
     def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
-    def encoding_operations(self):
-        return self.nodes(self.sector_size()) * self.security.layers
-
-    def hashing_constraints(self, size):
-        # FIXME: This doesn't account for size of kdf vs merkle hash. Set kdf_hash_factor correctly.
-        kdf_hash_factor = 1
-        merkle_tree = self.merkle_tree(size)
-        return merkle_tree.proof_constraints() + (self.kdf_hash.constraints * kdf_hash_factor ) * \
+    # How many hashing constraints due to hashing does the instance's circuit proof have?
+    def hashing_constraints(self):
+        kdf_hashes = (self.degree() + 1) / 2 # From ZigZag calculator.
+        merkle_tree = self.merkle_tree(self.instance.sector_size)
+        return merkle_tree.proof_constraints() + (self.kdf_hash.constraints * kdf_hashes) * \
                self.security.total_challenges
 
-    def non_hashing_contraints(self, size):
-        return self.instance.constraints - self.hashing_constraints(size)
+    # How many hashing constraints not due to hashing does the instance's circuit proof have?
+    def non_hashing_contraints(self):
+        return self.instance.constraints - self.hashing_constraints()
 
-
+    # Create a Performance object based on this ZigZag's calculated stats.
     def performance(self, size=GiB):
         scale = GiB / size
         seal_time =  scale * (self.replication_time(size) + self.total_proving_time(size))
         proof_size_per_GiB = scale * self.proof_size()
-        return Performance(seal_time, proof_size_per_GiB)
+        clock_speed_ghz = self.instance.machine.clock_speed_ghz
+        return Performance(seal_time, proof_size_per_GiB, clock_speed_ghz)
 
-    # TODO: This doesn't yet account for the changes to seal time introduced by changing sector size.
-    def sector_size_required_to_justify_seal_time(self, required_performance):
-        # This works because proof_size is per 1GiB.
-        return GiB* self.performance().total_seal_time / required_performance.total_seal_time
-
-    def justifies_seal_time(self, sector_size, required_performance):
+    # Does this ZigZag's performance with the given sector_size satisfy the required_performance requirements?
+    def meets_performance_requirements(self, sector_size, required_performance):
         return required_performance.satisfied_by(self.performance(size=sector_size))
 
     def scaled_for_new_hash(self, new_hash):
-        new_init_args = dict(self.init_args)
         # NOTE: This assumes proof size does not change when changing hash, but depending on number of constraints,
         # that may not be accurate — since we may need to add partitions as parameter and memory requirements grow.
         if self.instance:
             constraint_scale = new_hash.constraints / self.merkle_hash.constraints
-            instance_size = self.instance.sector_size
-            new_hashing_constraints = self.hashing_constraints(instance_size) * constraint_scale
-            new_constraints = self.non_hashing_contraints(instance_size) + new_hashing_constraints
+            print(f"constraint_scale: {constraint_scale}")
+            old_hashing_constraints = self.hashing_constraints()
+            new_hashing_constraints = old_hashing_constraints * constraint_scale
+            old_constraints = self.instance.constraints
+            print(f"non_hashing_constraints: {self.non_hashing_contraints()}")
+            new_constraints = self.non_hashing_contraints() + new_hashing_constraints
+            print(f"old hashing constraints: {old_hashing_constraints}; old_constraints: {old_constraints}")
+            print(f"new hashing constraints: {new_hashing_constraints}; new_constraints: {new_constraints}")
 
             scaled_instance = self.instance.scale(new_constraints, new_hash)
 
-            new_init_args['instance'] = scaled_instance
-            new_init_args['merkle_hash'] = new_hash
-            return ZigZag(**new_init_args)
+            new_zigzag = copy.deepcopy(self)
+            new_zigzag.instance = scaled_instance
+            new_zigzag.merkle_hash = new_hash
+
+            return new_zigzag.post_init()
         else:
             assert false, "unimplemented"
 
-def minimum_viable_sector_size(performance_requirements, zigzag, guess=GiB, iterations_so_far=0, max_iterations=20):
-    if guess < 1: return 0
-    #TODO: if guess < minimum sector size for proof size: return the minimum. Need to calculate.
-    if iterations_so_far >= max_iterations: return 0
+    # Find the minimum viable sector size, which must be a power of 2 (assuming the initial guess is).
+    def minimum_viable_sector_size(self, performance_requirements, guess=GiB, iterations_so_far=0,
+                                   max_iterations=20):
+        if guess < 1: return None
+        #TODO: if guess < minimum sector size for proof size: return the minimum. Need to calculate.
+        if iterations_so_far >= max_iterations: return 0
 
-    is_viable = zigzag.justifies_seal_time(guess, performance_requirements)
-    if is_viable:
-        recur = minimum_viable_sector_size(performance_requirements, zigzag, guess / 2,
-                                           iterations_so_far=iterations_so_far + 1,
-                                           max_iterations=max_iterations)
-        return guess if recur == 0 else recur
-    else:
-        return minimum_viable_sector_size(performance_requirements, zigzag, guess * 2,
-                                          iterations_so_far = iterations_so_far + 1,
-                                          max_iterations=max_iterations)
+        # If guess is viable, search for a smaller solution, starting with 1/2 the current guess.
+        if self.meets_performance_requirements(guess, performance_requirements):
+            smaller_solution = self.minimum_viable_sector_size(performance_requirements, guess / 2,
+                                               iterations_so_far=iterations_so_far + 1,
+                                               max_iterations=max_iterations)
+            return smaller_solution or guess
+        # Otherwise, a larger one, starting with twice the current guess.
+        else:
+            return self.minimum_viable_sector_size(performance_requirements, guess * 2,
+                                              iterations_so_far = iterations_so_far + 1,
+                                              max_iterations=max_iterations)
 
-def minimum_viable_sector_size_for_hybrids(performance_requirements, zigzag):
-    f = lambda r, n : r *(1/n)
+    def minimum_viable_sector_size_for_hybrids(self, performance_requirements):
+        f = lambda r, n : r *(1/n)
+        scaled = zigzag.scaled_for_new_hash(hybrid_hash(pedersen, blake2s, f(r,10)))
 
-    return [(f(r, 10), humanize_bytes(minimum_viable_sector_size(performance_requirements,
-                                                  zigzag.scaled_for_new_hash(hybrid_hash(pedersen, blake2s, f(r,10))))))
-            for r in range(0, 11)]
+        return [(f(r, 10), humanize_bytes(scaled.minimum_viable_sector_size(performance_requirements)))
+                for r in range(0, 11)]
 
 ################################################################################
 #### Unused so far
-
-class Machine(object):
-    """Machine Model"""
-
-    def __init__(self, **kwargs):
-        self.ram_gb = kwargs.get('ram_gb', 64)
-        self.cores = kwargs.get('cores', 14)
-        self.core_vcpus = kwargs.get('core_vcpus', 2)
-        self.clock_speed = kwargs.get('clock_speed', 3.1) # GhZ
-        # For now, assume a fixed operating cost.
-        # Account for variable energy consumption later.
-        self.hourly_cost = kwargs.get('hourly_cost') # dollars per hour
 
 class Config(object):
     """Configuration Model"""
@@ -313,3 +338,9 @@ class Config(object):
 
 z = ZigZag(security=filecoin_security_requirements)
 print(f"ZigZag nodes: {z.nodes(z.sector_size())}")
+
+constraint_test = ZigZag(security=Security(base_degree=5, expansion_degree=2, layers=2, total_challenges=2),
+                         merkle_hash=pedersen,
+                         instance=Instance(constraints=301624, groth_proving_time=2.1, sector_size=1024,
+                                           encoding_replication_time_per_GiB=72858, layers=2,
+                                           machine=Machine(clock_speed_ghz=3.1)))

@@ -1,4 +1,8 @@
-from proofs import Instance
+from proofs import Machine, Instance
+
+porcuquine_prover_machine = Machine(clock_speed_ghz=3.1, cores=14, core_vcpus=2, ram_gb=64)
+ec2_x1e32_xlarge_machine = Machine(clock_speed_ghz=2.3, cores=64, core_vcpus=2, ram_gb=3904)
+
 # ➜  rust-proofs git:(zigzag-example-taper) ✗ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 5 --size 262144 --groth
 # Feb 22 22:47:42.385 INFO replication_time/GiB: 2588.454166843s, target: stats, place: filecoin-proofs/examples/zigzag.rs:176 zigzag, root: filecoin-proofs
 # Feb 22 22:49:03.378 INFO vanilla_proving_time: 80.99321579 seconds, target: stats, place: filecoin-proofs/examples/zigzag.rs:208 zigzag, root: filecoin-proofs
@@ -13,11 +17,15 @@ porcuquine_prover = Instance(description="Porcuquine Prover (64GiB, 14 cores)",
                              sector_size=268435456,
                              constraints=31490555,
                              groth_proving_time=4312,
-                             vanilla_proving_time=80.99)
+                             vanilla_proving_time=80.99,
+                             layers=10,
+                             machine=porcuquine_prover_machine)
 
 # From DIZK vs Bellman table. In vcpu seconds
+# 2.785 minutes for 16M constraints on 6 cores (2 vcpu each)
 def projected_proving_time(constraints):
-    return constraints * (2.785 * 60 * 6) / 16000000
+    return constraints * (2.785 * 60 * (6 * 2)) / 16000000
+
 
 # [ec2-user@ip-172-31-47-121 rust-fil-proofs]$ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 333 --taper-layers 7 --taper 0.3 --size 262144 --groth --no-bench --partitions 8
 # Feb 28 09:58:40.228 INFO replication_time/GiB: 3197.191021367s, target: stats, place: filecoin-proofs/examples/zigzag.rs:178 zigzag, root: filecoin-proofs
@@ -35,11 +43,15 @@ ec2_x1e32_xlarge = Instance(description='EC2 x1e32.xlarge pedersen',
                             constraints=696224603,
                             sector_size = 268435456,
                             groth_proving_time=3549056,
-                            vanilla_proving_time=3297)
+                            vanilla_proving_time=3297,
+                            layers=10,
+                            machine=ec2_x1e32_xlarge_machine)
 
 projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with projected proof times',
                               encoding_replication_time_per_GiB=3197,
                               constraints=696224603,
                               sector_size = 268435456,
                               groth_proving_time= projected_proving_time(696224603),
-                              vanilla_proving_time=3297)
+                              vanilla_proving_time=3297,
+                              layers=10,
+                              machine=ec2_x1e32_xlarge_machine)
