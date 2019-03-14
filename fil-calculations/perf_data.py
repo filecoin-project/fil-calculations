@@ -1,4 +1,5 @@
-from proofs import Machine, Instance
+from proofs import Machine, Instance, ZigZag
+import proofs
 
 porcuquine_prover_machine = Machine(clock_speed_ghz=3.1, cores=14, core_vcpus=2, ram_gb=64)
 ec2_x1e32_xlarge_machine = Machine(clock_speed_ghz=2.3, cores=64, core_vcpus=2, ram_gb=3904)
@@ -55,3 +56,5 @@ projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with projec
                               vanilla_proving_time=3297,
                               layers=10,
                               machine=ec2_x1e32_xlarge_machine)
+
+filecoin_zigzag = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance)
