@@ -1,12 +1,14 @@
+from dataclasses import dataclass
 from perf_data import filecoin_zigzag
+from proofs import ZigZag
 
-class Security(object):
-    def __init__(self, *, encoding_speedup, drg_cheat, late_submission_overhead, zigzag, proof_count):
-        self.zigzag = zigzag
-        self.encoding_speedup = encoding_speedup
-        self.drg_cheat = drg_cheat
-        self.late_submission_overhead = late_submission_overhead
-        self.proof_count = proof_count
+@dataclass
+class Security:
+    zigzag: ZigZag
+    encoding_speedup: float
+    drg_cheat: float
+    late_submission_overhead: int
+    proof_count: int
 
     def polling_time(self):
         encoding_time = self.zigzag.performance().total_seal_time * self.drg_cheat / self.encoding_speedup

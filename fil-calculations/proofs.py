@@ -1,16 +1,24 @@
 import math
 import copy
+from dataclasses import dataclass, replace
+
 from util import humanize_bytes
 
 GiB = 1024 * 1024 * 1024
 
-class Performance(object):
+
+@dataclass
+class Performance:
     """Performance model, defining time and proof size to securely seal 1GiB."""
-    def __init__(self, seal_seconds, proof_bytes, clock_speed_ghz, sector_size=GiB):
-        scale = sector_size/GiB
-        self.total_seal_time = seal_seconds/scale # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
-        self.proof_size = proof_bytes / scale # per gigabyte
-        self.clock_speed_ghz = clock_speed_ghz # GHz
+    seal_seconds: float
+    proof_bytes: int
+    clock_speed_ghz: float
+    sector_size: int=GiB
+
+    def __post_init__(self):
+        scale = self.sector_size/GiB
+        self.total_seal_time = self.seal_seconds/scale # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
+        self.proof_size = self.proof_bytes / scale # per gigabyte
 
     def total_seal_cycles(self):
         return self.total_seal_time * self.clock_speed_ghz * (10**9)
@@ -30,13 +38,13 @@ bad_performance = Performance(100000000000, 99999999, 1.1)
 assert filecoin_scaling_requirements.satisfied_by(good_performance)
 assert not filecoin_scaling_requirements.satisfied_by(bad_performance)
 
-class Security(object):
-    def __init__(self, *, base_degree, expansion_degree, layers, total_challenges, sloth_iter=0):
-        self.base_degree = base_degree
-        self.expansion_degree = expansion_degree
-        self.layers = layers
-        self.sloth_iter = sloth_iter
-        self.total_challenges = total_challenges
+@dataclass
+class Security:
+    base_degree: int
+    expansion_degree: int
+    layers: int
+    total_challenges: int
+    sloth_iter: int=0
 
     def satisfied_by(self, other):
         return (other.base_degree >= self.base_degree) and (other.expansion_degree >= self.expansion_degree) \
@@ -47,11 +55,11 @@ class Security(object):
 filecoin_security_requirements = Security(base_degree=5, expansion_degree=8, layers=10, sloth_iter=0,
                                           total_challenges=8848)
 
-class HashFunction(object):
+@dataclass
+class HashFunction:
     ## For now, assume 64 byte input, 32 byte output
-    def __init__(self, time, constraints):
-        self.hash_time = time # seconds
-        self.constraints = constraints
+    hash_time: float
+    constraints: int
 
     def time(self):
         return self.hash_time
@@ -76,11 +84,13 @@ blake2s = HashFunction(1.0428e-7, 10324)
 
 pb50 = hybrid_hash(pedersen, blake2s, 0.5)
 
-class MerkleTree(object):
-    def __init__(self, nodes, hash_function):
-        self.nodes = nodes
-        self.hash_function = hash_function
-        self.height = math.ceil(math.log2(nodes)) + 1
+@dataclass
+class MerkleTree:
+    nodes: int
+    hash_function: HashFunction
+
+    def __post_init__(self):
+        self.height = math.ceil(math.log2(self.nodes)) + 1
 
     def hash_count(self):
         return self.nodes - 1
@@ -98,45 +108,31 @@ class MerkleTree(object):
     def proof_constraints(self):
         return self.proof_hashes() * self.hash_function.constraints
 
-
-class Machine(object):
+@dataclass
+class Machine:
     """Machine Model"""
-
-    def __init__(self, *, ram_gb=None, cores=None, core_vcpus=2, clock_speed_ghz, hourly_cost=None):
-        self.ram_gb = ram_gb # GiB
-        self.cores = cores
-        self.core_vcpus = core_vcpus
-        self.clock_speed_ghz = clock_speed_ghz
-        self.hourly_cost = hourly_cost
+    clock_speed_ghz: float
+    ram_gb: float=None # Gib
+    cores: int=None
+    hourly_cost: float=None
+    core_vcpus: int=2
 
 # TODO: Make it so this can be extracted directly (and correctly) from the JSON results of the zigzag example.
-class Instance(object):
+@dataclass
+class Instance:
+    encoding_replication_time_per_GiB: int
+    sector_size: int
+    constraints: int
+    groth_proving_time: float
+    machine: Machine
+    description: str="undescribed"
+    merkle_tree_hash: HashFunction=pedersen
+    layers: int=11 # FIXME: require this parameter.
+    vanilla_proving_time: float=0
+    security: Security=filecoin_security_requirements
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
-    def __init__(self, merkle_tree_hash=pedersen, *, description="",
-                 security=filecoin_security_requirements, # Assume we are using secure params if not otherwise specified.
-                 encoding_replication_time_per_GiB,
-                 sector_size,
-                 vanilla_proving_time=0,
-                 constraints,
-                 groth_proving_time,
-                 machine,
-                 layers=11, # FIXME: require this parameter
-              ):
-        # TODO: Might be cleaner to use @dataclass.
-        self.description = description
-        self.security = security
-        self.encoding_replication_time_per_GiB = encoding_replication_time_per_GiB # vcpu-seconds
-        # Q: Is reported vanilla proving time serial, or do we have to account for parallelism? A: It's parallel
-        self.sector_size = sector_size
-        self.vanilla_proving_time = vanilla_proving_time # vcpu-seconds
-        self.constraints = constraints
-        self.groth_proving_time = groth_proving_time # vcpu-seconds
-        self.merkle_tree_hash = merkle_tree_hash
-        self.layers = layers
-        self.machine = machine
-        self.post_init()
 
-    def post_init(self):
+    def __post_init__(self):
         self.proving_time_per_constraint = self.groth_proving_time / self.constraints
         assert self.constraints, "constraints required"
         return self
@@ -150,38 +146,27 @@ class Instance(object):
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
     def scale(self, constraints, new_hash):
-        new_instance = copy.deepcopy(self)
-        # TODO: mirror more sophisticated constraint calculation for replication time.
-        new_instance.encoding_replication_time_per_GiB = new_hash.div_time(self.merkle_tree_hash) * \
-                                                         self.encoding_replication_time_per_GiB
-        new_instance.constraints = constraints
-        new_instance.groth_proving_time = self.proving_time_per_constraint * constraints
-        return new_instance.post_init()
+        # # TODO: mirror more sophisticated constraint calculation for replication time.
+        return replace(self,
+                       encoding_replication_time_per_GiB=new_hash.div_time(self.merkle_tree_hash) *
+                       self.encoding_replication_time_per_GiB,
+                       constraints=constraints,
+                       groth_proving_time=self.proving_time_per_constraint * constraints)
 
-class ZigZag(object):
+@dataclass
+class ZigZag:
     """ZigZag Model"""
 
-    def __init__(self, *,
-                 security=filecoin_security_requirements,  # Assume we are using secure params if not otherwise specified.
-                 instance=None,
-                 circuit_proof_size=192,
-                 hash_size=32,
-                 size=GiB,
-                 partitions=1,
-                 merkle_hash=pedersen,
-                 kdf_hash=blake2s
-                 ):
-        self.security = security
-        self.instance = instance # Optional Instance.
-        self.circuit_proof_size = circuit_proof_size # bytes
-        self.hash_size = hash_size
-        self.size = size # Bytes, default to 1GiB
-        self.partitions = partitions
-        self.merkle_hash = merkle_hash
-        self.kdf_hash = kdf_hash
-        self.post_init()
+    instance: Instance=None
+    circuit_proof_size: int=192 # bytes
+    hash_size: int=32
+    size: int=GiB # bytes
+    partitions: int=1
+    merkle_hash: HashFunction=pedersen
+    kdf_hash: HashFunction=blake2s
+    security: Security=filecoin_security_requirements
 
-    def post_init(self):
+    def __post_init__(self):
         self.node_size = self.hash_size
         assert math.log2(self.size) % 1 == 0
         assert (self.node_size == self.hash_size)
@@ -288,11 +273,7 @@ class ZigZag(object):
 
             scaled_instance = self.instance.scale(new_constraints, new_hash)
 
-            new_zigzag = copy.deepcopy(self)
-            new_zigzag.instance = scaled_instance
-            new_zigzag.merkle_hash = new_hash
-
-            return new_zigzag.post_init()
+            return replace(self, instance=scaled_instance, merkle_hash=new_hash)
         else:
             assert false, "unimplemented"
 
@@ -325,14 +306,12 @@ class ZigZag(object):
 ################################################################################
 #### Unused so far
 
-class Config(object):
+@dataclass
+class Config:
     """Configuration Model"""
-
-    def __init__(self, zigzag, machine):
-        # For now, assume same machine for replication and proving.
-        self.replication_machine = machine
-        self.proving_machine = machine
-        self.zigzag = zigzag
+    replication_machine: Machine
+    proving_machine: Machine
+    zigzag: ZigZag
 
 ################################################################################
 
