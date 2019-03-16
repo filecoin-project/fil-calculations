@@ -4,8 +4,10 @@ from dataclasses import dataclass, replace
 
 from util import humanize_bytes
 
-GiB = 1024 * 1024 * 1024
-
+KiB = 1024
+MiB = 1024 * KiB
+GiB = 1024 * MiB
+TiB = 1024 * GiB
 
 @dataclass
 class Performance:
@@ -103,7 +105,8 @@ class MerkleTree:
         return self.hash_function.constraints() * self.hash_count()
 
     def proof_hashes(self):
-        return self.height
+        # excludes root, which is never hashed.
+        return self.height - 1
 
     def proof_constraints(self):
         return self.proof_hashes() * self.hash_function.constraints
