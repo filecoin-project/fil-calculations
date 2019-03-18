@@ -1,3 +1,11 @@
+"""
+
+Created on Mon Mar 11, 2019
+Based on @nicola's ZigZag calculator: https://observablehq.com/d/51563fc39810b60d
+@author: @redransil
+"""
+
+
 import math
 import copy
 from dataclasses import dataclass, replace
@@ -13,7 +21,7 @@ TiB = 1024 * GiB
 class Performance:
     """Performance model, defining time and proof size to securely seal 1GiB."""
     seal_seconds: float
-    proof_bytes: int
+    proof_bytes: int # per gigabyte
     clock_speed_ghz: float
     sector_size: int=GiB
 
@@ -27,7 +35,7 @@ class Performance:
 
     # Proof size per sector size. Defaults to standard 1 GiB
     def proof_size(self, sector_size=GiB):
-        return self.proof_size_per_gigabyte * (sector_size/GiB)
+        return self.proof_bytes * (sector_size/GiB)
 
     # Does other have performance greater than or equal to self in all dimensions?
     def satisfied_by(self, other):
@@ -102,7 +110,7 @@ class MerkleTree:
         return self.hash_function.time() * self.hash_count()
 
     def constraints(self):
-        return self.hash_function.constraints() * self.hash_count()
+        return self.hash_function.constraints * self.hash_count()
 
     def proof_hashes(self):
         # excludes root, which is never hashed.
@@ -149,7 +157,7 @@ class Instance:
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
     def scale(self, constraints, new_hash):
-        # # TODO: mirror more sophisticated constraint calculation for replication time.
+        # TODO: mirror more sophisticated constraint calculation for replication time.
         return replace(self,
                        encoding_replication_time_per_GiB=new_hash.div_time(self.merkle_tree_hash) *
                        self.encoding_replication_time_per_GiB,
@@ -168,7 +176,11 @@ class ZigZag:
     merkle_hash: HashFunction=pedersen
     kdf_hash: HashFunction=blake2s
     security: Security=filecoin_security_requirements
-
+    # FIXME: I added this here in order to merge @redransil's energy work in simply.
+    # However, this really should live in the Machine model.
+    processor_power = 165 # watts
+     # FIXME: since we're forced to hard-code performance, should we instead just default to a baseline instance?
+    constraint_proving_time: float=0.01469 / 1000 # seconds per constraint
     def __post_init__(self):
         self.node_size = self.hash_size
         assert math.log2(self.size) % 1 == 0
@@ -212,11 +224,45 @@ class ZigZag:
     def encoding_operations(self):
         return self.nodes(self.sector_size()) * self.security.layers
 
-    # Calculate replication time for data of size.
+    # replicate_min is calculated minimum replication speed i.e. wall clock time.
+    def replicate_min(self):
+        nodes = self.nodes(self.sector_size())
+        parents = self.security.base_degree + self.security.expansion_degree
+        parents_hashing = ((parents + 1) / 2) * self.kdf_hash.time()
+        kdf_time = parents_hashing * nodes * self.security.layers
+        sloth = self.security.sloth_iter * nodes * self.security.layers
+        return kdf_time + sloth
+
+    # replicate_max is calculated total replication cpu cost.
+    def replicate_max(self):
+        return self.replicate_min() + self.merkle_tree().time() * (self.security.layers + 1)
+
     def replication_time(self, size=GiB):
         assert self.instance, "unimplemented" # TODO: calculate a projection, as in the calculator.
         # Assumes replication time scales linearly with size.
         return self.instance.replication_time_per_GiB() * (size / GiB)
+
+
+    ############################################################################
+    # Energy requirements include processor but not the rest of system
+    # (cooling, memory, disk, etc)
+
+    def replicate_energy(self):
+        # returns in Wh
+        # Use replicate_max time: even if you parallelize, you're still running
+        # for this amount of cumulative time across all processors
+        # for reference, one BTC transaction uses ~430 kWh
+        # one household uses ~10 kWh/year
+        replicate_time_hours = self.replicate_max()/3600
+        return replicate_time_hours*self.processor_power # TODO: processor power belongs im machine. So?
+
+    def snark_energy(self):
+        # returns in Wh
+        # Using the non-parallelizable version of constraint estimates
+        # This has to be wrong; is giving GWh/GB
+        snark_time_hours = self.groth_proving_time()/3600
+        return snark_time_hours * self.processor_power
+    ############################################################################
 
     # Calculate vanilla proving time for data of size.p
     def vanilla_proving_time(self, size=GiB):
@@ -228,14 +274,20 @@ class ZigZag:
 
     # Calculate groth proving time for data of size.
     def groth_proving_time(self, size=GiB):
-        assert self.instance, "unimplemented" # TODO: Calculate a projection, as in the calculator.
-        # FIXME: Calculate ratio of constraints for self.sector_size and
-        #  size. Use to calculate groth proving time for size.
-        return self.instance.groth_proving_time
+        return self.instance.groth_proving_time if self.instance else self.constraints() * 1 # FIXME: time/constraint
+        # if self.instance:
+        #     # FIXME: Calculate ratio of constraints for self.sector_size and
+        #     #  size. Use to calculate groth proving time for size.
+        #     return self.instance.groth_proving_time
+        # else:
+        #     assert false, "unimplemented" # BOOKMARK
 
     # Calculate total_proving_time for data of `size`
     def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
+
+    def constraints(self):
+        return self.instance.constraints if self.instance else self.merkle_tree().constraints()
 
     # How many hashing constraints due to hashing does the instance's circuit proof have?
     def hashing_constraints(self):
@@ -246,7 +298,7 @@ class ZigZag:
 
     # How many hashing constraints not due to hashing does the instance's circuit proof have?
     def non_hashing_contraints(self):
-        return self.instance.constraints - self.hashing_constraints()
+        return self.constraints() - self.hashing_constraints()
 
     # Create a Performance object based on this ZigZag's calculated stats.
     def performance(self, size=GiB):
@@ -315,6 +367,8 @@ class Config:
     replication_machine: Machine
     proving_machine: Machine
     zigzag: ZigZag
+
+
 
 ################################################################################
 
