@@ -28,11 +28,52 @@ x1e32_64GiB = ZigZag(security=filecoin_security_requirements, instance=x1e32_xla
 ```
 
 ```python
-alternatives = [x1e32_8GiB, x1e32_64GiB]
+x1e32_projected = ZigZag(security=filecoin_security_requirements, instance=projected_instance, partitions=8)
+```
+
+```python
+alternatives = [x1e32_8GiB, x1e32_64GiB, x1e32_projected]
 ```
 
 ```python
 compare_zigzags(alternatives, requirements=filecoin_scaling_requirements)
+```
+
+```python
+target_sector_size=64*GiB
+```
+
+```python
+plot_relaxed_requirements(x1e32_projected, filecoin_scaling_requirements, target_sector_size)
+```
+
+```python
+# Doesn't terminate.
+# plot_accelerated_proving(x1e32_projected, filecoin_scaling_requirements, target_sector_size)
+```
+
+```python
+plot_accelerated_hashing(x1e32_projected, filecoin_scaling_requirements, target_sector_size)
+```
+
+```python
+x1e32_64GiB.performance(100 * GiB).total_seal_time * 100
+```
+
+```python
+x1e32_64GiB.replication_time(100 * GiB) + x1e32_64GiB.total_proving_time(100 * GiB)
+```
+
+```python
+x1e32_projected.meets_performance_requirements(64 * GiB, filecoin_scaling_requirements)
+```
+
+```python
+x1e32_projected.performance(64 * GiB)
+```
+
+```python
+filecoin_scaling_requirements
 ```
 
 ```python

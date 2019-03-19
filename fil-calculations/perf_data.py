@@ -39,7 +39,7 @@ def projected_proving_time(constraints):
 # core-seconds = 27727s * 64 cores = 1774528
 # Recalculated with --bench-only
 # Mar 09 20:26:00.146 INFO circuit_num_constraints: 696224603, target: stats, place: filecoin-proofs/examples/zigzag.rs:326 zigzag, root: filecoin-proofs
-ec2_x1e32_xlarge = Instance(description='EC2 x1e32.xlarge pedersen',
+ec2_x1e32_xlarge = Instance(description='x1e32.xlarge',
                             encoding_replication_time_per_GiB=3197,
                             constraints=696224603,
                             sector_size = 268435456,
@@ -48,7 +48,7 @@ ec2_x1e32_xlarge = Instance(description='EC2 x1e32.xlarge pedersen',
                             layers=10,
                             machine=ec2_x1e32_xlarge_machine)
 
-old_projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with projected proof times',
+old_projected_instance = Instance(description='x1e32.xlarge projected',
                               encoding_replication_time_per_GiB=3197,
                               constraints=696224603,
                               sector_size = 268435456,
@@ -67,21 +67,22 @@ old_projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with pr
 # Sector size = 67108864 * 1024 = 68719476736
 # Real wall clock proving time: 05:58:25 - 21:49:47 = 8:11 = 29460
 # core-seconds = 29460 * 64 = 1885440
-x1e32_xlarge_64 = Instance(description='EC2 x1e32.xlarge pedersen',
-encoding_replication_time_per_GiB=2018,
-                            constraints=879643632,
-                            sector_size = 68719476736,
-                            groth_proving_time=1885440,
-                            vanilla_proving_time=3297,
-                            layers=10,
-                            machine=ec2_x1e32_xlarge_machine)
+# vanilla proving time = .497 * 64 = 31.808 seconds
+x1e32_xlarge_64 = Instance(description='x1e32.xlarge',
+                           encoding_replication_time_per_GiB=2018,
+                           constraints=879643632,
+                           sector_size = 68719476736,
+                           groth_proving_time=1885440,
+                           vanilla_proving_time=3297,
+                           layers=10,
+                           machine=ec2_x1e32_xlarge_machine)
 
-projected_instance = Instance(description='EC2 x1e32.xlarge pedersen with projected proof times',
+projected_instance = Instance(description='x1e32.xlarge projected',
                               encoding_replication_time_per_GiB=3197,
                               constraints=696224603,
                               sector_size = 268435456,
                               groth_proving_time= projected_proving_time(696224603),
-                              vanilla_proving_time=3297,
+                              vanilla_proving_time=31.808,
                               layers=10,
                               machine=ec2_x1e32_xlarge_machine)
 

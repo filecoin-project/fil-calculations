@@ -94,8 +94,6 @@ projected_blake2s.total_proving_time(128 * GiB)
 projected_pedersen.total_proving_time(64 * GiB)
 ```
 
-Hmmmmm, something is not right with the constraint projection.
-
 ```python
 projected_pedersen.performance(64 * GiB).total_seal_cycles() - filecoin_scaling_requirements.total_seal_cycles()
 ```

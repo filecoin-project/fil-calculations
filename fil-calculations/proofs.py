@@ -7,7 +7,6 @@ Based on @nicola's ZigZag calculator: https://observablehq.com/d/51563fc39810b60
 
 
 import math
-import copy
 from dataclasses import dataclass, replace
 
 from util import humanize_bytes
@@ -20,15 +19,12 @@ TiB = 1024 * GiB
 @dataclass
 class Performance:
     """Performance model, defining time and proof size to securely seal 1GiB."""
-    seal_seconds: float
+    total_seal_time: float # core-seconds per gigabyte
     proof_bytes: int # per gigabyte
     clock_speed_ghz: float
-    sector_size: int=GiB
 
     def __post_init__(self):
-        scale = self.sector_size/GiB
-        self.total_seal_time = self.seal_seconds/scale # core-seconds per gigabyte
-        self.proof_size = self.proof_bytes / scale # per gigabyte
+        self.proof_size = self.proof_bytes # per gigabyte
 
     def total_seal_cycles(self):
         return self.total_seal_time * self.clock_speed_ghz * (10**9)
@@ -187,7 +183,7 @@ class ZigZag:
         return self
 
     def description(self):
-        return  self.instance.description if self.instance else "undescribed"
+        return  (self.instance.description if self.instance else "undescribed") + f" ({humanize_bytes(self.instance.sector_size)})"
 
     def sector_size(self):
         return self.instance.sector_size if self.instance else self.size
