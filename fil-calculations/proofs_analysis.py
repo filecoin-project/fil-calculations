@@ -42,9 +42,9 @@ def graph_hash_seal_times(pedersen_zigzag, required_performance):
     ax1.set_xlabel('Sector Size (GiB)')
     ax1.set_ylabel('seal time per GiB (smaller is better)')
     ax1.legend()
+
     ax2.plot(xs, blake_advantage_pb50, label='blake advantage over hybrid')
     ax2.plot(xs, blake_advantage_pedersen, label='blake advantage over pedersen')
-
     ax2.set_xlabel('Sector Size (GiB)')
     ax2.set_ylabel('blake2s advantage seal time')
     ax2.legend()
@@ -54,10 +54,20 @@ def graph_hash_seal_times(pedersen_zigzag, required_performance):
     ax3.plot(proof_size_xs, required_proof_size, label='required')
     ax3.set_xlabel('Sector Size (GiB')
     ax3.set_ylabel('proof size (smaller is better)')
+    ax3.legend()
 
     ax4.set_xlabel('Sector Size (GiB')
 
     cross = find_approximate_simple_crossing(xs, pedersen_seal_times, blake2s_seal_times)
     plt.show()
     print(f"Seal rates cross at about {humanize_bytes(cross)}")
+
+
+def compare_zigzags(alternatives, *, requirements=filecoin_scaling_requirements):
+    cols = 2
+    rows = len(alternatives)
+    f, axes = plt.subplots(rows, cols)
+    f.set_size_inches(12, 8)
+
+    plt.show()
 
