@@ -33,3 +33,16 @@ def humanize_bytes(bytes, precision=1):
         if bytes >= factor:
             break
     return '%.*f %s' % (precision, bytes / factor, suffix)
+
+def humanize_seconds(seconds, precision=1):
+    """Return a humanized string representation of a number of seconds.
+    """
+
+    minute = 60
+    hour = minute * 60
+
+    hours = seconds  // hour
+    minutes = (seconds % hour) // minute
+    seconds = seconds % minute
+
+    return ('-' if (seconds < 0) else '') + '%02d:%02d:%.*f' % (hours, minutes, precision, seconds)

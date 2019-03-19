@@ -27,7 +27,7 @@ class Performance:
 
     def __post_init__(self):
         scale = self.sector_size/GiB
-        self.total_seal_time = self.seal_seconds/scale # vcpu-seconds per gigabyte; 1 core = 2 hyperthreads = 2 vcpus
+        self.total_seal_time = self.seal_seconds/scale # core-seconds per gigabyte
         self.proof_size = self.proof_bytes / scale # per gigabyte
 
     def total_seal_cycles(self):
@@ -41,7 +41,7 @@ class Performance:
     def satisfied_by(self, other):
         return (other.total_seal_cycles() <= self.total_seal_cycles()) and (other.proof_size <= self.proof_size)
 
-filecoin_scaling_requirements = Performance(2*60*60, 26, 5.0) # time = 2 vcpu-hrs
+filecoin_scaling_requirements = Performance(60*60, 26, 5.0)
 good_performance = Performance(100, 10, 6.6)
 bad_performance = Performance(100000000000, 99999999, 1.1)
 
@@ -126,7 +126,6 @@ class Machine:
     ram_gb: float=None # Gib
     cores: int=None
     hourly_cost: float=None
-    core_vcpus: int=2
 
 # TODO: Make it so this can be extracted directly (and correctly) from the JSON results of the zigzag example.
 @dataclass
@@ -317,14 +316,10 @@ class ZigZag:
         # that may not be accurate — since we may need to add partitions as parameter and memory requirements grow.
         if self.instance:
             constraint_scale = new_hash.constraints / self.merkle_hash.constraints
-            print(f"constraint_scale: {constraint_scale}")
             old_hashing_constraints = self.hashing_constraints()
             new_hashing_constraints = old_hashing_constraints * constraint_scale
             old_constraints = self.instance.constraints
-            print(f"non_hashing_constraints: {self.non_hashing_contraints()}")
             new_constraints = self.non_hashing_contraints() + new_hashing_constraints
-            print(f"old hashing constraints: {old_hashing_constraints}; old_constraints: {old_constraints}")
-            print(f"new hashing constraints: {new_hashing_constraints}; new_constraints: {new_constraints}")
 
             scaled_instance = self.instance.scale(new_constraints, new_hash)
 
