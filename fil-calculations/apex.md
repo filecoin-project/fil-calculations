@@ -15,6 +15,7 @@ jupyter:
 ```python
 from apex import *
 from proofs import *
+from perf_data import *
 ```
 
 ```python
@@ -42,15 +43,11 @@ aa = apex(zz, ll); aa
 ```
 
 ```python
-humanize_seconds(z.groth_proving_time())
+z.show_times()
 ```
 
 ```python
-humanize_seconds(a.groth_proving_time())
-```
-
-```python
-humanize_seconds(z.groth_proving_time()-a.groth_proving_time())
+a.show_times()
 ```
 
 ```python
@@ -58,23 +55,55 @@ a.groth_proving_time()/z.groth_proving_time()
 ```
 
 ```python
-humanize_seconds(z.total_seal_time())
+zz.show_times()
 ```
 
 ```python
-humanize_seconds(a.total_seal_time())
+aa.show_times()
 ```
 
 ```python
-1 - (a.total_seal_time() / z.total_seal_time())
+aa.groth_proving_time()/zz.groth_proving_time()
 ```
 
 ```python
-humanize_seconds(a.replication_time())
+zz.constraints()
 ```
 
 ```python
-aa.merkle_hash
+aa.constraints()
+```
+
+```python
+zz.constraints() - aa.constraints()
+```
+
+```python
+aa.constraints() / zz.constraints()
+```
+
+```python
+projected = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8, size=64*GiB)
+```
+
+```python
+projected_blake = projected.scaled_for_new_hash(blake2s)
+```
+
+```python
+optimize(projected_blake)
+```
+
+```python
+apex_projected_blake = apex(projected_blake, 17)
+```
+
+```python
+apex_projected_blake.show_times(64 * GiB)
+```
+
+```python
+projected_blake.show_times(64 * GiB)
 ```
 
 ```python

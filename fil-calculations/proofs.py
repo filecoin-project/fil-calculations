@@ -227,7 +227,7 @@ class ZigZag:
                                  + self.comm_d_size() + self.comm_r_size() + self.comm_r_star_size()
 
     # This can be calculated from taper, etc. later.
-    def total_challenges(self): return self.challenges
+    def total_challenges(self): return self.security.total_challenges
 
     def degree(self): return self.security.base_degree + self.security.expansion_degree
 
@@ -262,6 +262,7 @@ class ZigZag:
 
     # CPU time
     def replication_time(self, size=GiB):
+        size = size or GiB # In case None is passed explicitly, which is a pattern used here.
         if self.instance:
             # Assumes replication time scales linearly with size.
             return self.instance.replication_time_per_GiB() * (size / GiB)
@@ -300,9 +301,16 @@ class ZigZag:
     # Calculate groth proving time for data of size.
     def groth_proving_time(self, size=GiB):
         if self.instance:
+            # assert (not size) or  (size == self.sector_size()),\
+            #     "cannot specify a size to groth_proving_time when Instance is present."
             # FIXME: Calculate ratio of constraints for self.sector_size and
             #  size. Use to calculate groth proving time for size.
-            return self.instance.groth_proving_time
+            base_time = self.instance.groth_proving_time
+            apex_cost = self.apex_constraints() * self.constraint_proving_time
+            apex_savings = (self.apex_height - 1) * (self.degree() + 2) * (self.total_challenges() / self.partitions)\
+                           * \
+                           self.constraint_proving_time * self.merkle_hash.constraints
+            return base_time + apex_cost - apex_savings
         else:
             return self.constraints(size) * (0.01469 / 1000) # FIXME: don't hard code this.
 
@@ -310,10 +318,11 @@ class ZigZag:
     def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
+    # Constraints used to verify the commitment to the apex leaves.
     def apex_constraints(self):
         if self.apex_height > 0:
-            # divide by two if we can avoid merkle-damgard
-            return ((self.merkle_tree().apex_leaves() - 1) * self.merkle_hash.constraints) / 2
+            # divide by two if we can avoid merkle-damgard TODO: how actually calculate this?
+            return ((self.merkle_tree().apex_leaves() - 1) * self.kdf_hash.constraints) / 2
         else:
             return 0
 
@@ -393,8 +402,8 @@ class ZigZag:
         return [(f(r, 10), humanize_bytes(scaled.minimum_viable_sector_size(performance_requirements)))
                 for r in range(0, 11)]
 
-    def show_times(self):
-        print(f"groth: {humanize_seconds(self.groth_proving_time())}; replication: {humanize_seconds(self.replication_time())}; seal: {humanize_seconds(self.total_seal_time())}")
+    def show_times(self, time=None):
+        print(f"groth: {humanize_seconds(self.groth_proving_time(time))}; replication: {humanize_seconds(self.replication_time(time))}; seal: {humanize_seconds(self.total_seal_time(time))}")
 
 
 ################################################################################

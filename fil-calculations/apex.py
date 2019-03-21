@@ -27,8 +27,8 @@ def apex_savings(zigzag, apex_height, optimization_fn):
 
 def optimal_apex(zigzag, optimization_fn):
     best_savings = 0
-    best_l = None
-    actual_best = None
+    best_l = 0
+    actual_best = zigzag.total_seal_time()
     savings = 0
     # apex height 1 is undefined
     for l in range(2, zigzag.merkle_tree().height):
@@ -39,6 +39,7 @@ def optimal_apex(zigzag, optimization_fn):
             best_l = l
 
     return (best_l, best_savings, humanize_seconds(best_savings), humanize_seconds(actual_best))
+
 
 def optimize(zigzag):
     return optimal_apex(zigzag, apex)
@@ -65,9 +66,12 @@ zz = ZigZag(security=proofs.filecoin_security_requirements, partitions=8, size=6
 (l, _, _, _) = optimize(zz)
 aa = apex(zz, l)
 
-x = ZigZag(security=proofs.filecoin_security_requirements, instance=x1e32_xlarge_64, partitions=8, size=64*GiB)
-# (l, _, _, _) = optimize(x)
-# y = apex(x, l)
-y = apex(x, 17)
+x = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8, size=64*GiB)
+(l, _, _, _) = optimize(x)
+y = apex(x, l)
+#y = apex(x, 17)
 
 xx = x.scaled_for_new_hash(proofs.blake2s)
+(l, _, _, _) = optimize(xx)
+yy = apex(xx, l)
+#yy = apex(xx,17)
