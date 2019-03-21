@@ -66,11 +66,54 @@ x1e32_projected_relaxed.meets_performance_requirements(64 * GiB, filecoin_scalin
 ```
 
 ```python
+pb = x1e32_projected.scaled_for_new_hash(blake2s)
+prb = x1e32_projected_relaxed.scaled_for_new_hash(blake2s)
+```
+
+```python
 humanize_bytes(x1e32_projected.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 ```python
 humanize_bytes(x1e32_projected_relaxed.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+```python
+humanize_bytes(prb.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+```python
+humanize_bytes(pb.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+---
+
+
+# Apex
+Also see [Apex Notebook](apex.md)
+
+```python
+from apex import *
+```
+
+```python
+z = ZigZag(security=proofs.filecoin_security_requirements, partitions=8, size=64*GiB, merkle_hash=blake2s)
+```
+
+```python
+(l, savings, savings_, best_) = optimize(z); (l, savings, savings_, best_)
+```
+
+```python
+az = apex(z, l); az
+```
+
+```python
+# (l, savings, savings_, best_) = optimize(x1e32_64GiB) ; (l, savings, savings_, best)
+```
+
+```python
+#[humanize_bytes(s) for s in [z.minimum_viable_sector_size(filecoin_scaling_requirements)]]
 ```
 
 ```python

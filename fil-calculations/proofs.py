@@ -178,11 +178,10 @@ class Instance:
     def replication_time_per_GiB(self):
         return self.encoding_replication_time_per_GiB + self.merkle_tree_replication_time_per_GiB()
 
-    def scale(self, constraints, new_hash):
+    def scale(self, constraints, new_merkle_hash):
         # TODO: mirror more sophisticated constraint calculation for replication time.
         return replace(self,
-                       encoding_replication_time_per_GiB=new_hash.div_time(self.merkle_tree_hash) *
-                       self.encoding_replication_time_per_GiB,
+                       merkle_tree_hash=new_merkle_hash,
                        constraints=constraints,
                        groth_proving_time=self.proving_time_per_constraint * constraints)
 
@@ -360,7 +359,6 @@ class ZigZag:
             constraint_scale = new_hash.constraints / self.merkle_hash.constraints
             old_hashing_constraints = self.hashing_constraints()
             new_hashing_constraints = old_hashing_constraints * constraint_scale
-            old_constraints = self.instance.constraints
             new_constraints = self.non_hashing_contraints() + new_hashing_constraints
 
             scaled_instance = self.instance.scale(new_constraints, new_hash)
@@ -394,6 +392,10 @@ class ZigZag:
 
         return [(f(r, 10), humanize_bytes(scaled.minimum_viable_sector_size(performance_requirements)))
                 for r in range(0, 11)]
+
+    def show_times(self):
+        print(f"groth: {humanize_seconds(self.groth_proving_time())}; replication: {humanize_seconds(self.replication_time())}; seal: {humanize_seconds(self.total_seal_time())}")
+
 
 ################################################################################
 #### Unused so far
