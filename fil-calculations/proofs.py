@@ -7,18 +7,26 @@ Based on @nicola's ZigZag calculator: https://observablehq.com/d/51563fc39810b60
 
 
 import math
+import copy
 from dataclasses import dataclass, replace
 
-from util import humanize_bytes
+from util import humanize_bytes, humanize_seconds
 
 KiB = 1024
 MiB = 1024 * KiB
 GiB = 1024 * MiB
 TiB = 1024 * GiB
 
+# https://docs.google.com/spreadsheets/d/14aqrRyQFTEpxPb5P9quiDW5gUwyS7ShMwgLG-_LihrU/edit#gid=0
+# Row 24
+# seconds per constraint
+constraint_proving_time = ((2.785 * 60 * 6) / 16e6) * 4/5 # 4/5 because 4GHz benchmarks — TODO: move to cycles
+
 @dataclass
 class Performance:
     """Performance model, defining time and proof size to securely seal 1GiB."""
+    # TODO: rename total_seal_time in notebooks, to disambiguate from ZigZag.total_seal_time and make clear that this
+    #  is scaled.
     total_seal_time: float # core-seconds per gigabyte
     proof_bytes: int # per gigabyte
     clock_speed_ghz: float
@@ -37,7 +45,10 @@ class Performance:
     def satisfied_by(self, other):
         return (other.total_seal_cycles() <= self.total_seal_cycles()) and (other.proof_size <= self.proof_size)
 
-filecoin_scaling_requirements = Performance(60*60, 26, 5.0)
+
+# Factor by which to relax the CPU time requirement for experiments.
+global_time_relaxation = 1
+filecoin_scaling_requirements = Performance(60*60*global_time_relaxation, 26, 5.0)
 good_performance = Performance(100, 10, 6.6)
 bad_performance = Performance(100000000000, 99999999, 1.1)
 
@@ -83,7 +94,10 @@ def hybrid_hash(leaf_hash, root_hash, root_fraction):
     return HashFunction(hash_time, constraints)
 
 #pedersen = HashFunction(0.000017993, 1324)
-# Based on Merklepor, size 1024 (path length 6), 1 challenge = 6914 constraints; 2 challengs = 13827
+# Based on Merklepor, size 1024 (path length 6), 1 challenge = 6914 constraints; 2 challenges = 13827
+
+
+#pedersen = HashFunction(.000022074, 1152)
 pedersen = HashFunction(0.000017993, 1152)
 
 blake2s = HashFunction(1.0428e-7, 10324)
@@ -94,26 +108,39 @@ pb50 = hybrid_hash(pedersen, blake2s, 0.5)
 class MerkleTree:
     nodes: int
     hash_function: HashFunction
+    apex_height: int=0
 
     def __post_init__(self):
-        self.height = math.ceil(math.log2(self.nodes)) + 1
+        assert self.apex_height != 1, "apex_height of 1 is undefined"
+        self.height = self.tree_height(self.nodes)
 
+    def apex_leaves(self):
+        return 2 ** (self.apex_height - 1)
+
+    # Hashes required to build tree.
     def hash_count(self):
-        return self.nodes - 1
+        apex_count = self.apex_leaves() - 1
+        return (self.nodes - 1) - apex_count
 
     # Assuming no parallelism
     def time(self):
         return self.hash_function.time() * self.hash_count()
 
+    # FIXME: This probably never makes sense to calculate. Probably remove.
     def constraints(self):
         return self.hash_function.constraints * self.hash_count()
 
     def proof_hashes(self):
         # excludes root, which is never hashed.
-        return self.height - 1
+        path_length = self.height - 1
+        return path_length - (self.apex_height - 1)
 
     def proof_constraints(self):
         return self.proof_hashes() * self.hash_function.constraints
+
+    @staticmethod
+    def tree_height(leaves):
+        return math.ceil(math.log2(leaves)) + 1
 
 @dataclass
 class Machine:
@@ -173,9 +200,11 @@ class ZigZag:
     security: Security=filecoin_security_requirements
     # FIXME: I added this here in order to merge @redransil's energy work in simply.
     # However, this really should live in the Machine model.
-    processor_power = 165 # watts
+    processor_power: float=165 # watts
+    relax_time: int=1
      # FIXME: since we're forced to hard-code performance, should we instead just default to a baseline instance?
-    constraint_proving_time: float=0.01469 / 1000 # seconds per constraint
+    constraint_proving_time: int=constraint_proving_time # seconds per constraint
+    apex_height: int=0
     def __post_init__(self):
         self.node_size = self.hash_size
         assert math.log2(self.size) % 1 == 0
@@ -189,7 +218,7 @@ class ZigZag:
         return self.instance.sector_size if self.instance else self.size
 
     def merkle_tree(self, size=GiB):
-        return MerkleTree(self.nodes(size), self.merkle_hash)
+        return MerkleTree(self.nodes(size), self.merkle_hash, apex_height=self.apex_height)
 
     def comm_d_size(self): return self.hash_size
     def comm_r_size(self): return self.hash_size
@@ -204,15 +233,15 @@ class ZigZag:
     def degree(self): return self.security.base_degree + self.security.expansion_degree
 
     def nodes(self, size):
-        nodes = size / self.node_size
+        nodes = (size or self.sector_size()) / self.node_size
         assert (nodes % 1) == 0
         return math.floor(nodes)
 
     def merkle_time(self, n_trees):
-        tree_time = self.merkle_tree.time()
+        tree_time = self.merkle_tree().time()
         return n_trees * tree_time
 
-    def all_merkle_time(self): return self.merkle_time(self.layers + 1)
+    def all_merkle_time(self): return self.merkle_time(self.security.layers + 1)
 
 
     # How many encoding operations does it take to replicate?
@@ -220,23 +249,25 @@ class ZigZag:
         return self.nodes(self.sector_size()) * self.security.layers
 
     # replicate_min is calculated minimum replication speed i.e. wall clock time.
-    def replicate_min(self):
-        nodes = self.nodes(self.sector_size())
+    def replicate_min(self, size=None):
+        nodes = self.nodes(size or self.sector_size())
         parents = self.security.base_degree + self.security.expansion_degree
         parents_hashing = ((parents + 1) / 2) * self.kdf_hash.time()
         kdf_time = parents_hashing * nodes * self.security.layers
         sloth = self.security.sloth_iter * nodes * self.security.layers
         return kdf_time + sloth
 
-    # replicate_max is calculated total replication cpu cost.
-    def replicate_max(self):
-        return self.replicate_min() + self.merkle_tree().time() * (self.security.layers + 1)
+    # replicate_max is calculated total replication cpu time.
+    def replicate_max(self, size = None):
+        return self.replicate_min(size) + self.merkle_tree(size).time() * (self.security.layers + 1)
 
+    # CPU time
     def replication_time(self, size=GiB):
-        assert self.instance, "unimplemented" # TODO: calculate a projection, as in the calculator.
-        # Assumes replication time scales linearly with size.
-        return self.instance.replication_time_per_GiB() * (size / GiB)
-
+        if self.instance:
+            # Assumes replication time scales linearly with size.
+            return self.instance.replication_time_per_GiB() * (size / GiB)
+        else:
+            return self.replicate_max(size)
 
     ############################################################################
     # Energy requirements include processor but not the rest of system
@@ -264,41 +295,56 @@ class ZigZag:
         if self.instance:
             return self.instance.vanilla_proving_time
         else:
-            # Calculate a projection, as in the calculator.
-            assert false, "unimplemented"
+            # TODO: Calculate a projection, as in the calculator.
+            return 0 # Vanilla proving time is cheap enough now that we can use 0 as an approximation when we need to.
 
     # Calculate groth proving time for data of size.
     def groth_proving_time(self, size=GiB):
-        return self.instance.groth_proving_time if self.instance else self.constraints() * 1 # FIXME: time/constraint
-        # if self.instance:
-        #     # FIXME: Calculate ratio of constraints for self.sector_size and
-        #     #  size. Use to calculate groth proving time for size.
-        #     return self.instance.groth_proving_time
-        # else:
-        #     assert false, "unimplemented" # BOOKMARK
+        if self.instance:
+            # FIXME: Calculate ratio of constraints for self.sector_size and
+            #  size. Use to calculate groth proving time for size.
+            return self.instance.groth_proving_time
+        else:
+            return self.constraints(size) * (0.01469 / 1000) # FIXME: don't hard code this.
 
     # Calculate total_proving_time for data of `size`
     def total_proving_time(self, size=GiB):
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
-    def constraints(self):
-        return self.instance.constraints if self.instance else self.merkle_tree().constraints()
+    def apex_constraints(self):
+        if self.apex_height > 0:
+            # divide by two if we can avoid merkle-damgard
+            return ((self.merkle_tree().apex_leaves() - 1) * self.merkle_hash.constraints) / 2
+        else:
+            return 0
+
+    def constraints(self, size=None):
+        # NOTE: when no instance, return ONLY hashing constraints — for use in relative calculations.
+        non_apex_constraints = self.instance.constraints if self.instance else self.hashing_constraints(size)
+
+        return non_apex_constraints + self.apex_constraints()
 
     # How many hashing constraints due to hashing does the instance's circuit proof have?
-    def hashing_constraints(self):
-        kdf_hashes = (self.degree() + 1) / 2 # From ZigZag calculator.
-        merkle_tree = self.merkle_tree(self.instance.sector_size)
-        return merkle_tree.proof_constraints() + (self.kdf_hash.constraints * kdf_hashes) * \
-               self.security.total_challenges
+    # NOTE: This is not the number of hashes required to build the merkle trees — which happens outside of circuits.
+    def hashing_constraints(self, size=None):
+        parents = self.degree()
+        kdf_hashes = (parents + 1) / 2 # From ZigZag calculator.
+        merkle_tree = self.merkle_tree(size or self.sector_size())
+        return ((merkle_tree.proof_constraints() * (parents + 2))+ (self.kdf_hash.constraints * kdf_hashes)) * \
+               (self.security.total_challenges / self.partitions)
 
     # How many hashing constraints not due to hashing does the instance's circuit proof have?
     def non_hashing_contraints(self):
         return self.constraints() - self.hashing_constraints()
 
+    def total_seal_time(self, size=None):
+        effective_size  = size or self.size
+        return (self.replication_time(effective_size) + self.total_proving_time(effective_size))
+
     # Create a Performance object based on this ZigZag's calculated stats.
     def performance(self, size=GiB):
         scale = GiB / size
-        seal_time =  scale * (self.replication_time(size) + self.total_proving_time(size))
+        seal_time =  scale * self.total_seal_time(size) / self.relax_time
         proof_size_per_GiB = scale * self.proof_size()
         clock_speed_ghz = self.instance.machine.clock_speed_ghz
         return Performance(seal_time, proof_size_per_GiB, clock_speed_ghz)
@@ -321,7 +367,7 @@ class ZigZag:
 
             return replace(self, instance=scaled_instance, merkle_hash=new_hash)
         else:
-            assert false, "unimplemented"
+            assert False, "unimplemented"
 
     # Find the minimum viable sector size, which must be a power of 2 (assuming the initial guess is).
     def minimum_viable_sector_size(self, performance_requirements, guess=GiB, iterations_so_far=0,
@@ -363,7 +409,7 @@ class Config:
 
 ################################################################################
 
-z = ZigZag(security=filecoin_security_requirements)
+z = ZigZag(security=filecoin_security_requirements, partitions=8)
 print(f"ZigZag nodes: {z.nodes(z.sector_size())}")
 
 constraint_test = ZigZag(security=Security(base_degree=5, expansion_degree=2, layers=2, total_challenges=2),

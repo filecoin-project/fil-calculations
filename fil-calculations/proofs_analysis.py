@@ -94,13 +94,13 @@ def plot_cycle_graphs(zigzag, requirements, axes):
     plot_performance(zigzag, requirements, ax1)
     scaled = zigzag.scaled_for_new_hash(blake2s)
     scaled.instance.description += ' blake2s'
-    plot_performance(zigzag.scaled_for_new_hash(blake2s), requirements, ax2)
+    plot_performance(scaled, requirements, ax2)
 
 def compare_zigzags(alternatives, *, requirements=filecoin_scaling_requirements):
     cols = 2
     rows = len(alternatives)
     f, axes = plt.subplots(rows, cols)
-    f.set_size_inches(8, 10)
+    f.set_size_inches(12, 10)
 
     for (alternative, axis) in zip(alternatives, axes):
         plot_cycle_graphs(alternative, requirements, axis)

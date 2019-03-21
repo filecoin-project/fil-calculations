@@ -73,18 +73,18 @@ x1e32_xlarge_64 = Instance(description='x1e32.xlarge',
                            constraints=879643632,
                            sector_size = 68719476736,
                            groth_proving_time=1885440,
-                           vanilla_proving_time=3297,
+                           vanilla_proving_time=31.808,
                            layers=10,
                            machine=ec2_x1e32_xlarge_machine)
 
 projected_instance = Instance(description='x1e32.xlarge projected',
-                              encoding_replication_time_per_GiB=3197,
-                              constraints=696224603,
-                              sector_size = 268435456,
-                              groth_proving_time= projected_proving_time(696224603),
+                              encoding_replication_time_per_GiB=2018,
+                              constraints=879643632,
+                              sector_size = 68719476736,
+                              groth_proving_time= projected_proving_time(879643632),
                               vanilla_proving_time=31.808,
                               layers=10,
                               machine=ec2_x1e32_xlarge_machine)
 
-filecoin_zigzag = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance)
+filecoin_zigzag = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8)
 
