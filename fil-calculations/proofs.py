@@ -280,7 +280,8 @@ class ZigZag:
         size = size or self.sector_size() # In case None is passed explicitly, which is a pattern used here.
         if self.instance:
             # Assumes replication time scales linearly with size.
-            return self.instance.replication_time_per_GiB() * (size / GiB)
+            apex_merkle_time = ((self.merkle_tree().apex_leaves() - 1) * self.merkle_hash.hash_time) * (self.security.layers + 1)
+            return (self.instance.replication_time_per_GiB() - apex_merkle_time) * (size / GiB)
         else:
             return self.replicate_max(size)
 
@@ -315,19 +316,18 @@ class ZigZag:
 
     # Calculate groth proving time for data of size.
     def groth_proving_time(self, size=None):
+        size = size or self.sector_size()
         if self.instance:
             # assert (not size) or  (size == self.sector_size()),\
             #     "cannot specify a size to groth_proving_time when Instance is present."
             # FIXME: Calculate ratio of constraints for self.sector_size and
             #  size. Use to calculate groth proving time for size.
             base_time = self.instance.groth_proving_time
-            apex_cost = self.apex_constraints() * self.constraint_proving_time
-            apex_savings = (self.apex_height - 1) * (self.degree() + 2) * (self.total_challenges() / self.partitions)\
-                           * \
-                           self.constraint_proving_time * self.merkle_hash.constraints
-            return base_time + apex_cost - apex_savings
+            total_apex_constraints = (self.net_apex_constraints() * self.partitions)
+            return base_time + total_apex_constraints * self.constraint_proving_time
         else:
-            return self.constraints(size) * (0.01469 / 1000) # FIXME: don't hard code this.
+            return self.constraints(size) * (0.01469 / 1000)  # FIXME: don't hard code this.
+
 
     # Calculate total_proving_time for data of `size`
     def total_proving_time(self, size=None):
@@ -338,24 +338,31 @@ class ZigZag:
     def apex_constraints(self):
         if self.apex_height > 0:
             # divide by two if we can avoid merkle-damgard TODO: how actually calculate this?
-            return ((self.merkle_tree().apex_leaves() - 1) * self.kdf_hash.constraints) / 2
+            return ((self.merkle_tree().apex_leaves() - 1) * self.merkle_hash.constraints) / 2
         else:
             return 0
 
+    def apex_constraints_avoided(self):
+        if self.apex_height > 0:
+            return (self.apex_height - 1) * (self.degree() + 2) * self.total_challenges() * self.merkle_hash.constraints \
+                   * self.constraint_proving_time
+        else:
+            return 0
+
+    def net_apex_constraints(self):
+        return self.apex_constraints() - self.apex_constraints_avoided()
+
     def constraints(self, size=None):
-        # NOTE: when no instance, return ONLY hashing constraints — for use in relative calculations.
-        non_apex_constraints = self.instance.constraints * self.partitions if self.instance else \
-            self.hashing_constraints(size)
-
-
-        return non_apex_constraints + self.apex_constraints()
-
-    def partition_constraints(self):
-        return self.constraints() / self.partitions
+        if self.instance:
+            non_apex_constraints = self.instance.constraints # * self.partitions
+            return non_apex_constraints + self.net_apex_constraints()
+        else:
+            # NOTE: when no instance, return ONLY hashing constraints — for use in relative calculations.
+            return self.hashing_constraints(size)
 
     # (Approximately) how many bytes of RAM are needed to run one partition's circuit?
     def groth_proving_memory(self):
-        return self.partition_constraints() * constraint_ram
+        return self.constraints() * constraint_ram
 
     # How many hashing constraints due to hashing does the instance's circuit proof have?
     # NOTE: This is not the number of hashes required to build the merkle trees — which happens outside of circuits.
@@ -363,7 +370,7 @@ class ZigZag:
         parents = self.degree()
         kdf_hashes = (parents + 1) / 2 # From ZigZag calculator.
         merkle_tree = self.merkle_tree(size or self.sector_size())
-        return ((merkle_tree.proof_constraints() * (parents + 2))+ (self.kdf_hash.constraints * kdf_hashes)) * \
+        return ((merkle_tree.proof_constraints() * (parents + 2)) + (self.kdf_hash.constraints * kdf_hashes)) * \
                (self.security.total_challenges / self.partitions)
 
     # How many hashing constraints not due to hashing does the instance's circuit proof have?

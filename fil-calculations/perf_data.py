@@ -26,8 +26,9 @@ porcuquine_prover = Instance(description="Porcuquine Prover (64GiB, 14 cores)",
 # 2.785 minutes for 16M constraints on 6 cores
 # TODO/FIXME: Account for clock speed.
 def projected_proving_time(constraints):
-    optimization_discount = 4/5 # measured on 4GHz machine
-    return constraints * (2.785 * 60 * 6) * optimization_discount / 16000000
+    optimization_discount = 1
+    cpu_discount = 4/5 # measured on 4GHz machine
+    return constraints * (2.785 * 60 * 6) * optimization_discount * cpu_discount / 16000000
 
 
 # [ec2-user@ip-172-31-47-121 rust-fil-proofs]$ ./target/release/examples/zigzag --m 5 --expansion 8 --layers 10 --challenges 333 --taper-layers 7 --taper 0.3 --size 262144 --groth --no-bench --partitions 8

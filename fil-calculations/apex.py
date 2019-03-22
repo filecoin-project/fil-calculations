@@ -1,7 +1,7 @@
 import copy
 
 import proofs
-from proofs import ZigZag, MerkleTree, GiB
+from proofs import *
 from util import *
 from perf_data import *
 

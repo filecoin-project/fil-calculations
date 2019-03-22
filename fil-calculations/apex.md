@@ -107,11 +107,11 @@ projected_blake = projected.scaled_for_new_hash(blake2s)
 ```
 
 ```python
-optimize(projected_blake)
+(lx, _, _, _) = optimize(projected_blake); lx
 ```
 
 ```python
-apex_projected_blake = apex(projected_blake, 17)
+apex_projected_blake = apex(projected_blake, lx)
 ```
 
 ```python
@@ -127,27 +127,20 @@ projected_blake.meets_performance_requirements(64*GiB, filecoin_scaling_requirem
 ```
 
 ```python
-(l, _, savings, best) = optimize(projected_blake); (l, savings, best)
+(ly, _, savings, best) = optimize(projected_blake); (l, savings, best)
 ```
 
 ```python
-apex_projected_blake = apex(projected_blake, 17)
+apex_projected_blake = apex(projected_blake, ly)
 ```
 
 ```python
 apex_projected_blake.meets_performance_requirements(64*GiB, filecoin_scaling_requirements)
 ```
 
-### OUTDATED
-**Yes!** This will meet scaling requirements. We need to consider how large the circuits are. We also need to repartition so the first layer of challenges is a power of 2.
-
 ```python
 apex_projected_blake.constraints() / apex_projected_blake.partitions # how many constraints in each partition
 ```
-
-This is huge. So we will need to go 128-GiB sectors. However, that means we can go up to 16 partitions. Verify that: (TODO — should be a simpler way to ask for only this.)~
-
-Actually I failed to divide by partitions the first time, so the below is unncessary.
 
 ```python
 ZigZag(partitions=16).proof_size() <= filecoin_scaling_requirements.proof_size * 128 * GiB
@@ -156,106 +149,94 @@ ZigZag(partitions=16).proof_size() <= filecoin_scaling_requirements.proof_size *
 Let's work through this again with 128 GiB sectors:
 
 ```python
-projected128 = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8)
-```
-
-```python
 simulated128 = ZigZag(security=proofs.filecoin_security_requirements, partitions=8, size=128*GiB, merkle_hash=blake2s)
 ```
 
 ```python
-projected.constraints(), projected128.constraints(), simulated128.constraints()
+projected.constraints(), projected.constraints(), simulated128.constraints()
 ```
 
 ```python
-optimize(projected128)
+optimize(projected)
 ```
 
 ```python
-apex_projected128 = apex(projected128, 13)
+humanize_bytes(apex_projected.groth_proving_memory())
 ```
 
 ```python
-apex_projected128
+apex_projected.meets_performance_requirements(128*GiB, filecoin_scaling_requirements)
 ```
 
 ```python
-humanize_bytes(apex_projected128.groth_proving_memory())
+apex_projected_blake.meets_performance_requirements(128*GiB, filecoin_scaling_requirements)
 ```
 
 ```python
-apex_projected128.meets_performance_requirements(128*GiB, filecoin_scaling_requirements)
-```
-
-```python
-
-```
-
-```python
-projected_blake128 = projected128.scaled_for_new_hash(blake2s)
-```
-
-```python
-optimize(projected_blake128)
-```
-
-```python
-apex_projected_blake128 = apex(projected_blake128, 17)
-```
-
-```python
-apex_projected_blake128.meets_performance_requirements(128*GiB, filecoin_scaling_requirements)
+apex_projected_blake.meets_performance_requirements(64*GiB, filecoin_scaling_requirements)
 ```
 
 Still good.
 
 ```python
-(apex_projected_blake128.constraints(), apex_projected_blake.constraints())
+humanize_bytes(apex_projected.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 ```python
-apex_projected_blake128.merkle_time(100)
+humanize_bytes(apex_projected_blake.minimum_viable_sector_size(filecoin_scaling_requirements))
 ```
 
 ```python
-apex_projected_blake128.replication_time()
+apex_projected.constraints(),  apex_projected_blake.constraints()
 ```
 
 ```python
-apex_projected_blake128.merkle_pessimization=100
+apex_projected.total_seal_time() / apex_projected_blake.total_seal_time()
 ```
 
 ```python
-apex_projected_blake128.meets_performance_requirements(128*GiB, filecoin_scaling_requirements)
+apex_projected.show_times()
 ```
 
 ```python
-apex_projected_blake128.replication_time()
+apex_projected_blake.show_times()
 ```
 
 ```python
-apex_projected_blake128.show_times()
+apex_projected.apex_constraints_avoided()/ apex_projected.apex_constraints()
 ```
 
 ```python
-apex_projected_blake128.constraints() * constraint_ram
+apex_projected_blake.apex_constraints_avoided() / apex_projected_blake.apex_constraints()
 ```
 
 ```python
-apex_projected_blake128.partition_constraints()
+apex_projected.total_seal_time() / projected.total_seal_time()
 ```
 
 ```python
-humanize_bytes(apex_projected_blake128.partition_constraints() * constraint_ram)
+apex_projected.groth_proving_time(), projected.groth_proving_time()
 ```
 
 ```python
-humanize_bytes((apex_projected_blake128.constraints() / 32) * constraint_ram)
+projected.show_times()
 ```
 
 ```python
-
+aa.apex_constraints_avoided()
 ```
+
+```python
+(aa.apex_height - 1) * (aa.degree() + 2) * aa.total_challenges() * aa.merkle_hash.constraints **aa.constraint_proving_time
+```
+
+```python
+aa.constraints()
+```
+
+### NOTE
+
+Here is the point at which I realize that we need a distinct apex (and the cost of commiting to it) per layer. Then also, that because parent selection is pseudorandom, we cannot use the trick of bucketing challenges evenly within apex leaves except for the data and replica nodes. Sadness descends on the late night.
 
 ```python
 
