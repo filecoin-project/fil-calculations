@@ -66,7 +66,7 @@ zz = ZigZag(security=proofs.filecoin_security_requirements, partitions=8, size=6
 (l, _, _, _) = optimize(zz)
 aa = apex(zz, l)
 
-x = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8, size=64*GiB)
+x = ZigZag(security=proofs.filecoin_security_requirements, instance=projected_instance, partitions=8)
 (l, _, _, _) = optimize(x)
 y = apex(x, l)
 #y = apex(x, 17)

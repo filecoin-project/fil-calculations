@@ -26,7 +26,7 @@ porcuquine_prover = Instance(description="Porcuquine Prover (64GiB, 14 cores)",
 # 2.785 minutes for 16M constraints on 6 cores
 # TODO/FIXME: Account for clock speed.
 def projected_proving_time(constraints):
-    optimization_discount = 1
+    optimization_discount = 4/5 # measured on 4GHz machine
     return constraints * (2.785 * 60 * 6) * optimization_discount / 16000000
 
 

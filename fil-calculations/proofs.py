@@ -17,10 +17,16 @@ MiB = 1024 * KiB
 GiB = 1024 * MiB
 TiB = 1024 * GiB
 
+
+
 # https://docs.google.com/spreadsheets/d/14aqrRyQFTEpxPb5P9quiDW5gUwyS7ShMwgLG-_LihrU/edit#gid=0
 # Row 24
 # seconds per constraint
 constraint_proving_time = ((2.785 * 60 * 6) / 16e6) * 4/5 # 4/5 because 4GHz benchmarks — TODO: move to cycles
+
+# Row 24
+# bytes required to prove: bytes per constraint
+constraint_ram = 23.1 * GiB / 16e6
 
 @dataclass
 class Performance:
@@ -192,11 +198,12 @@ class ZigZag:
     instance: Instance=None
     circuit_proof_size: int=192 # bytes
     hash_size: int=32
-    size: int=GiB # bytes
+    size: int=None # bytes
     partitions: int=1
     merkle_hash: HashFunction=pedersen
     kdf_hash: HashFunction=blake2s
     security: Security=filecoin_security_requirements
+    merkle_pessimization: float=1.5 # Factor to make merkle tree generation more realistic than assuming raw hash speed.
     # FIXME: I added this here in order to merge @redransil's energy work in simply.
     # However, this really should live in the Machine model.
     processor_power: float=165 # watts
@@ -206,8 +213,15 @@ class ZigZag:
     apex_height: int=0
     def __post_init__(self):
         self.node_size = self.hash_size
-        assert math.log2(self.size) % 1 == 0
         assert (self.node_size == self.hash_size)
+        if self.instance:
+            # size is only intended for when no instance is present. This should be refactored somehow over time.
+            assert not self.size, "size may not be specified when instance is provided."
+            self.size = self.instance.sector_size
+        elif not self.size:
+            self.size = GiB
+
+        assert math.log2(self.size) % 1 == 0
         return self
 
     def description(self):
@@ -237,7 +251,7 @@ class ZigZag:
         return math.floor(nodes)
 
     def merkle_time(self, n_trees):
-        tree_time = self.merkle_tree().time()
+        tree_time = self.merkle_tree().time() * self.merkle_pessimization
         return n_trees * tree_time
 
     def all_merkle_time(self): return self.merkle_time(self.security.layers + 1)
@@ -258,11 +272,12 @@ class ZigZag:
 
     # replicate_max is calculated total replication cpu time.
     def replicate_max(self, size = None):
-        return self.replicate_min(size) + self.merkle_tree(size).time() * (self.security.layers + 1)
+        return self.replicate_min(size) + self.merkle_tree(size).time() * (self.security.layers + 1) * \
+               self.merkle_pessimization # FIXME: unify with merkle_time
 
     # CPU time
     def replication_time(self, size=GiB):
-        size = size or GiB # In case None is passed explicitly, which is a pattern used here.
+        size = size or self.sector_size() # In case None is passed explicitly, which is a pattern used here.
         if self.instance:
             # Assumes replication time scales linearly with size.
             return self.instance.replication_time_per_GiB() * (size / GiB)
@@ -291,7 +306,7 @@ class ZigZag:
     ############################################################################
 
     # Calculate vanilla proving time for data of size.p
-    def vanilla_proving_time(self, size=GiB):
+    def vanilla_proving_time(self, size=None):
         if self.instance:
             return self.instance.vanilla_proving_time
         else:
@@ -299,7 +314,7 @@ class ZigZag:
             return 0 # Vanilla proving time is cheap enough now that we can use 0 as an approximation when we need to.
 
     # Calculate groth proving time for data of size.
-    def groth_proving_time(self, size=GiB):
+    def groth_proving_time(self, size=None):
         if self.instance:
             # assert (not size) or  (size == self.sector_size()),\
             #     "cannot specify a size to groth_proving_time when Instance is present."
@@ -315,7 +330,8 @@ class ZigZag:
             return self.constraints(size) * (0.01469 / 1000) # FIXME: don't hard code this.
 
     # Calculate total_proving_time for data of `size`
-    def total_proving_time(self, size=GiB):
+    def total_proving_time(self, size=None):
+        size = size or self.sector_size()
         return self.vanilla_proving_time(size) + self.groth_proving_time(size)
 
     # Constraints used to verify the commitment to the apex leaves.
@@ -328,9 +344,18 @@ class ZigZag:
 
     def constraints(self, size=None):
         # NOTE: when no instance, return ONLY hashing constraints — for use in relative calculations.
-        non_apex_constraints = self.instance.constraints if self.instance else self.hashing_constraints(size)
+        non_apex_constraints = self.instance.constraints * self.partitions if self.instance else \
+            self.hashing_constraints(size)
+
 
         return non_apex_constraints + self.apex_constraints()
+
+    def partition_constraints(self):
+        return self.constraints() / self.partitions
+
+    # (Approximately) how many bytes of RAM are needed to run one partition's circuit?
+    def groth_proving_memory(self):
+        return self.partition_constraints() * constraint_ram
 
     # How many hashing constraints due to hashing does the instance's circuit proof have?
     # NOTE: This is not the number of hashes required to build the merkle trees — which happens outside of circuits.
@@ -346,7 +371,7 @@ class ZigZag:
         return self.constraints() - self.hashing_constraints()
 
     def total_seal_time(self, size=None):
-        effective_size  = size or self.size
+        effective_size  = size or self.sector_size()
         return (self.replication_time(effective_size) + self.total_proving_time(effective_size))
 
     # Create a Performance object based on this ZigZag's calculated stats.
@@ -372,7 +397,8 @@ class ZigZag:
 
             scaled_instance = self.instance.scale(new_constraints, new_hash)
 
-            return replace(self, instance=scaled_instance, merkle_hash=new_hash)
+        # Set size None so it defaults. Illegal to pass since it might conflict with instance.
+            return replace(self, instance=scaled_instance, merkle_hash=new_hash, size=None)
         else:
             assert False, "unimplemented"
 
