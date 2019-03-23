@@ -279,9 +279,11 @@ class ZigZag:
     def replication_time(self, size=GiB):
         size = size or self.sector_size() # In case None is passed explicitly, which is a pattern used here.
         if self.instance:
-            # Assumes replication time scales linearly with size.
+            # TODO: This is horrible, but okay since hash time is so small (tiny negative time when no apex at all).
             apex_merkle_time = ((self.merkle_tree().apex_leaves() - 1) * self.merkle_hash.hash_time) * (self.security.layers + 1)
-            return (self.instance.replication_time_per_GiB() - apex_merkle_time) * (size / GiB)
+            # Assumes replication time scales linearly with size.
+            return (self.instance.replication_time_per_GiB() - (apex_merkle_time * self.merkle_tree().nodes
+                                                                * self.node_size )) * (size / GiB)
         else:
             return self.replicate_max(size)
 
