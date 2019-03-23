@@ -238,6 +238,11 @@ aa.constraints()
 
 Here is the point at which I realize that we need a distinct apex (and the cost of commiting to it) per layer. Then also, that because parent selection is pseudorandom, we cannot use the trick of bucketing challenges evenly within apex leaves except for the data and replica nodes. Sadness descends on the late night.
 
+
+### Addendum
+
+But — there may be a way around this, depending on how flexible we can be with the method of sampling the DRG. The investigation continues. 
+
 ```python
 
 ```
