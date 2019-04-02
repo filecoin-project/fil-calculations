@@ -5,26 +5,26 @@ def humanize_bytes(bytes, precision=1):
     >>> humanize_bytes(1)
     '1 byte'
     >>> humanize_bytes(1024)
-    '1.0 kB'
+    '1.0 KiB'
     >>> humanize_bytes(1024*123)
-    '123.0 kB'
+    '123.0 KiB'
     >>> humanize_bytes(1024*12342)
-    '12.1 MB'
+    '12.1 MiB'
     >>> humanize_bytes(1024*12342,2)
-    '12.05 MB'
+    '12.05 MiB'
     >>> humanize_bytes(1024*1234,2)
-    '1.21 MB'
+    '1.21 MiB'
     >>> humanize_bytes(1024*1234*1111,2)
-    '1.31 GB'
+    '1.31 GiB'
     >>> humanize_bytes(1024*1234*1111,1)
-    '1.3 GB'
+    '1.3 GiB'
     """
     abbrevs = (
-        (1<<50, 'PB'),
-        (1<<40, 'TB'),
-        (1<<30, 'GB'),
-        (1<<20, 'MB'),
-        (1<<10, 'kB'),
+        (1<<50, 'PiB'),
+        (1<<40, 'TiB'),
+        (1<<30, 'GiB'),
+        (1<<20, 'MiB'),
+        (1<<10, 'KiB'),
         (1, 'bytes')
     )
     if bytes == 1:

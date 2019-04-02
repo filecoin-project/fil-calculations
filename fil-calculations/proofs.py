@@ -169,6 +169,7 @@ class Instance:
     layers: int=11 # FIXME: require this parameter.
     vanilla_proving_time: float=0
     security: Security=filecoin_security_requirements
+    groth_acceleration: int=1.0 # Projected improvements to proving time.
     """Concrete implementations with known benchmarks of fixed parameters on a specific machine."""
 
     def __post_init__(self):
@@ -276,7 +277,7 @@ class ZigZag:
                self.merkle_pessimization # FIXME: unify with merkle_time
 
     # CPU time
-    def replication_time(self, size=GiB):
+    def replication_time(self, size=None):
         size = size or self.sector_size() # In case None is passed explicitly, which is a pattern used here.
         if self.instance:
             # TODO: This is horrible, but okay since hash time is so small (tiny negative time when no apex at all).
@@ -324,7 +325,7 @@ class ZigZag:
             #     "cannot specify a size to groth_proving_time when Instance is present."
             # FIXME: Calculate ratio of constraints for self.sector_size and
             #  size. Use to calculate groth proving time for size.
-            base_time = self.instance.groth_proving_time
+            base_time = self.instance.groth_proving_time / self.instance.groth_acceleration
             total_apex_constraints = (self.net_apex_constraints() * self.partitions)
             return base_time + total_apex_constraints * self.constraint_proving_time
         else:

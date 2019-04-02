@@ -5,7 +5,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.0'
-      jupytext_version: 1.0.3
+      jupytext_version: 0.8.6
   kernelspec:
     display_name: Python 3
     language: python
@@ -17,6 +17,7 @@ from util import *
 from proofs import *
 from perf_data import *
 from proofs_analysis import *
+from dataclasses import replace
 ```
 
 ```python
@@ -84,4 +85,48 @@ humanize_bytes(prb.minimum_viable_sector_size(filecoin_scaling_requirements))
 
 ```python
 humanize_bytes(pb.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+```python
+accelerated_instance = replace(projected_instance, groth_acceleration=8)
+x1e32_accelerated = ZigZag(security=filecoin_security_requirements, instance=accelerated_instance, partitions=8)
+x1e32_accelerated_blake2s = x1e32_accelerated.scaled_for_new_hash(blake2s)
+```
+
+```python
+humanize_bytes(x1e32_accelerated.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+```python
+humanize_seconds(x1e32_projected.total_seal_time()), humanize_seconds(x1e32_projected.replication_time()), humanize_seconds(x1e32_projected.groth_proving_time())
+```
+
+```python
+humanize_seconds(x1e32_accelerated.total_seal_time()), humanize_seconds(x1e32_accelerated.replication_time()), humanize_seconds(x1e32_accelerated.groth_proving_time())
+```
+
+```python
+humanize_seconds(x1e32_accelerated.vanilla_proving_time()), humanize_seconds(x1e32_accelerated.total_proving_time())
+```
+
+```python
+humanize_seconds(x1e32_accelerated.replication_time(64*GiB) + x1e32_accelerated.total_proving_time())
+```
+
+```python
+accelerated_instance.replication_time_per_GiB()
+```
+
+```python
+humanize_seconds(x1e32_accelerated_blake2s.replication_time())
+```
+
+```python
+humanize_bytes(x1e32_accelerated_blake2s.minimum_viable_sector_size(filecoin_scaling_requirements))
+```
+
+Need 8x groth acceleration for 64 GiB.
+
+```python
+
 ```
